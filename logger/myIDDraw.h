@@ -209,6 +209,28 @@ public:
 	LPDIRECTDRAWPALETTE FAR m_pIDDrawPalette;
 };
 
+class myIDDrawClipper : public IDirectDrawClipper
+{
+public:
+	myIDDrawClipper(LPDIRECTDRAWCLIPPER pOriginal);
+	virtual ~myIDDrawClipper(void);
+
+	// The original DDraw function definitions BEGIN
+	HRESULT __stdcall QueryInterface (REFIID a, LPVOID FAR * b);
+	ULONG   __stdcall AddRef(void);
+	ULONG   __stdcall Release(void);
+
+	/*** IDirectDrawClipper methods ***/
+	HRESULT __stdcall GetClipList(LPRECT, LPRGNDATA, LPDWORD);
+	HRESULT __stdcall GetHWnd(HWND FAR *);
+	HRESULT __stdcall Initialize(LPDIRECTDRAW, DWORD);
+	HRESULT __stdcall IsClipListChanged(BOOL FAR *);
+	HRESULT __stdcall SetClipList(LPRGNDATA, DWORD);
+	HRESULT __stdcall SetHWnd(DWORD, HWND);
+
+	LPDIRECTDRAWCLIPPER FAR m_pIDDrawClipper;
+};
+
 class myIDDrawSurface1 : public IDirectDrawSurface
 {
 public:

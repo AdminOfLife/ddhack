@@ -81,8 +81,10 @@ HRESULT  __stdcall myIDDraw7::Compact(void)
 
 HRESULT  __stdcall myIDDraw7::CreateClipper(DWORD a, LPDIRECTDRAWCLIPPER FAR* b, IUnknown FAR* c)
 {
+	HRESULT r = m_pIDDraw->CreateClipper(a, b, c);
+	*b = new myIDDrawClipper(*b);
 	logf(this, "myIDDraw7::CreateClipper");
-	return(m_pIDDraw->CreateClipper(a, b, c));
+	return r;
 }
 
 
@@ -114,6 +116,9 @@ HRESULT  __stdcall myIDDraw7::DuplicateSurface(LPDIRECTDRAWSURFACE7 a, LPDIRECTD
 HRESULT  __stdcall myIDDraw7::EnumDisplayModes(DWORD a, LPDDSURFACEDESC2 b, LPVOID c, LPDDENUMMODESCALLBACK2 d)
 {
 	logf(this, "myIDDraw7::EnumDisplayModes");
+	logf(this, " dwFlags: %08x", a);
+	if (b != NULL)
+		logf(this, " desc.dwFlags: %08x", b->dwFlags);
 	return(m_pIDDraw->EnumDisplayModes(a, b, c, d));
 }
 

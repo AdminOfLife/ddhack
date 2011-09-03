@@ -29,7 +29,15 @@
  */
 #include "stdafx.h"
 #include <varargs.h>
+#include <windowsx.h>
+
+//#pragma comment(lib, "detoured.lib")
+//#pragma comment(lib, "detours.lib")
+//#pragma comment(lib, "User32.lib")
+
+#include <detours/detours.h>
 #include "logo.h"
+#include "cursor.h"
 
 //#define LOG_DLL_ATTACH
 
@@ -37,14 +45,14 @@
 #pragma data_seg (".ddraw_shared")
 HINSTANCE gHinst;
 HWND gHwnd;        
-myIDDrawSurface1 * gPrimarySurface;
-myIDDrawSurface1 * gBackBuffer;
+myIDDrawSurface_Generic * gPrimarySurface;
+myIDDrawSurface_Generic * gBackBuffer;
 int gScreenWidth;
 int gScreenHeight;
 int gScreenBits;
 int gRealScreenWidth;
 int gRealScreenHeight;
-int texdata[2048*1024];
+unsigned int texdata[2048*2048*4];
 WNDPROC origfunc = NULL;
 HDC gWindowDC;
 int gLastUpdate = -1;
@@ -61,12 +69,39 @@ int gIgnoreAspect = 0;
 int gGDI = 0;
 int gVsync = 0;
 int temp[640*480];
+int xPos = 0;
+int yPos = 0;
+int softCursor = 0;
+int gOffset = 0;
+int gMouseclipping = 0;
+
+
+HWND (WINAPI *CreateWindowEx_fn)(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam) = CreateWindowEx;
 
 #pragma data_seg ()
 
 void logf(char *msg, ...)
 {
 #ifdef _DEBUG
+	va_list argp;
+	FILE * f = fopen("ddhack.log","a");	
+	static int t = -1;
+	if (t == -1)
+		t = GetTickCount();
+	int tn = GetTickCount();
+	
+	fprintf(f,"[%+6dms] (%08x) ", tn-t, 0);
+	t = tn;
+	
+	va_start(argp, msg);
+	vfprintf(f, msg, argp);
+	va_end(argp);
+	
+	fprintf(f,"\n");
+
+	fclose(f);
+#elif 0
+//#ifdef _DEBUG
 	va_list argp;
 	static int t = -1;
 	char temp1[256];
@@ -82,10 +117,27 @@ void logf(char *msg, ...)
 	sprintf(temp1,"[%08d %+6dms] %s\n", t, tn-t, temp2);
 	t = tn;
 
-	OutputDebugString(temp1);
+	printf(temp1);
 #endif
 }
 
+HWND WINAPI myCreateWindowEx(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
+{
+	logf("CreateWindowEx");
+	logf(" nWidth:    %d", nWidth);
+	logf(" nHeight:   %d", nHeight);
+	logf(" dwExStyle: %08x", dwExStyle);
+	logf(" dwStyle:   %08x", dwStyle);
+	dwExStyle &= ~(WS_EX_TOPMOST);
+	if (dwStyle & WS_POPUP)
+	{
+		dwStyle &= ~(WS_POPUP | WS_MAXIMIZE);
+		dwStyle |= WS_MINIMIZEBOX;
+	}
+	HWND r = CreateWindowEx_fn(dwExStyle, lpClassName, lpWindowName, dwStyle, x, y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
+	logf(" return:    %08x", r);
+	return r;
+}
 
 void getgdibitmap()
 {
@@ -133,13 +185,13 @@ void updatescreen()
 	// If we're not set up yet, or it's been less or equal than 10ms since
 	// the last update, skip the update.
 	if (gPrimarySurface == NULL ||
-		(gScreenBits == 8 && gPrimarySurface->mCurrentPalette == NULL) ||
+		(gScreenBits == 8 && gPrimarySurface->getCurrentPalette() == NULL) ||
 		(tick - gLastUpdate) <= 10)
 	{
 		if (gPrimarySurface == NULL)
 			logf("primary surface is NULL");
 		else
-		if (gPrimarySurface->mCurrentPalette == NULL)
+		if (gPrimarySurface->getCurrentPalette() == NULL)
 			logf("primary palette is NULL");
 		if ((tick - gLastUpdate) <= 10)
 			logf("less than 10ms since last update");
@@ -160,14 +212,14 @@ void updatescreen()
 //	if (frame == 20)
 	{
 		FILE * f = fopen("frame100dump.dat","wb");
-		fwrite(gPrimarySurface->mSurfaceData,640*480,1,f);
-		fwrite(gPrimarySurface->mCurrentPalette->mPal,256*4,1,f);
+		fwrite(gPrimarySurface->getSurfaceData(),640*480,1,f);
+		fwrite(gPrimarySurface->getCurrentPalette()->mPal,256*4,1,f);
 		fclose(f);
 	}
 #elif defined(LOADFRAME)
 		FILE * f = fopen("frame100dump.dat","rb");
-		fread(gPrimarySurface->mSurfaceData,640*480,1,f);
-		fread(gPrimarySurface->mCurrentPalette->mPal,256*4,1,f);
+		fread(gPrimarySurface->getSurfaceData(),640*480,1,f);
+		fread(gPrimarySurface->getCurrentPalette()->mPal,256*4,1,f);
 		fclose(f);
 
 #endif
@@ -185,7 +237,10 @@ void updatescreen()
 		tex_w *= 2;
 		tex_h *= 2;
 	}
-
+	//np2
+	tex_w = (gScreenWidth);
+	tex_h = (gScreenHeight);
+	
 	if (gGDI)
 	{
 		// In GDI mode we'll skip most of the processing..
@@ -199,9 +254,9 @@ void updatescreen()
 		{
 			// in wc3, only places where these two horizontal spans are
 			// black is when we're viewing video.
-			if (gPrimarySurface->mSurfaceData[gPrimarySurface->mPitch * 70 + i])
+			if (gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * 70 + i])
 				wc3video = 0;
-			if (gPrimarySurface->mSurfaceData[gPrimarySurface->mPitch * (gScreenHeight - 70) + i])
+			if (gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (gScreenHeight - 70) + i])
 				wc3video = 0;
 		}
 
@@ -210,8 +265,8 @@ void updatescreen()
 			if (wc3video)
 			{
 				for (i = 71; i < gScreenHeight - 70; i+=2)
-					memcpy(gPrimarySurface->mSurfaceData + gPrimarySurface->mPitch * (i-1),
-					gPrimarySurface->mSurfaceData + gPrimarySurface->mPitch * i,
+					memcpy(gPrimarySurface->getSurfaceData() + gPrimarySurface->getPitch() * (i-1),
+					gPrimarySurface->getSurfaceData() + gPrimarySurface->getPitch() * i,
 					gScreenWidth);			
 			}
 		}
@@ -226,8 +281,8 @@ void updatescreen()
 				{
 					for (j = 0; j < gScreenWidth; j++)
 					{
-						int pix = gPrimarySurface->mSurfaceData[gPrimarySurface->mPitch * i + j];
-						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->mCurrentPalette->mPal[pix]);
+						int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * i + j];
+						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
 					}
 				}
 			}
@@ -239,8 +294,8 @@ void updatescreen()
 				{
 					for (j = 0; j < gScreenWidth * 2; j++)
 					{
-						int pix = gPrimarySurface->mSurfaceData[gPrimarySurface->mPitch * (i / 2) + (j / 2)];
-						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->mCurrentPalette->mPal[pix]);
+						int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (i / 2) + (j / 2)];
+						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
 					}
 				}
 			}
@@ -248,8 +303,8 @@ void updatescreen()
 		case 16:
 			{
 				// wc4 16bit mode is actually 15bit - 1:5:5:5
-				unsigned short * surf = (unsigned short *)gPrimarySurface->mSurfaceData;
-				int pitch = gPrimarySurface->mPitch / 2;
+				unsigned short * surf = (unsigned short *)gPrimarySurface->getSurfaceData();
+				int pitch = gPrimarySurface->getPitch() / 2;
 				for (i = 0; i < gScreenHeight; i++)
 				{
 					for (j = 0; j < gScreenWidth; j++)
@@ -275,8 +330,8 @@ void updatescreen()
 			{
 				// the "24 bit" graphics mode in wc4 is actually 15 bits with
 				// 9 bits of padding!
-				char * surf = (char *)gPrimarySurface->mSurfaceData;
-				int pitch = gPrimarySurface->mPitch / 3;
+				char * surf = (char *)gPrimarySurface->getSurfaceData();
+				int pitch = gPrimarySurface->getPitch() / 3;
 				for (i = 0; i < gScreenHeight; i++)
 				{
 					for (j = 0; j < gScreenWidth; j++)
@@ -349,6 +404,22 @@ void updatescreen()
 		}
 	}
 
+	if (softCursor && xPos >= 0 && yPos >= 0)
+	{
+		for (i = 0; i < 12 && xPos + i < tex_w; i++)
+		{
+			for (j = 0; j < 19 && yPos + j < tex_h; j++)
+			{
+				unsigned int pixel = cursor[j*12+i];
+				
+				if (pixel != 0xFF000000)
+				{
+					texdata[(yPos+j)*tex_w+xPos+i] = pixel;
+				}
+			}
+		}
+	}
+
     // upload texture
     glTexImage2D(GL_TEXTURE_2D,    // target
                  0,                // level
@@ -376,7 +447,7 @@ void updatescreen()
 
 	glShadeModel(GL_SMOOTH);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0);
-	glViewport(0,0,gRealScreenWidth,gRealScreenHeight);
+	glViewport(0,gOffset,gScreenWidth,gScreenHeight);
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
@@ -401,13 +472,13 @@ void updatescreen()
 	// end up with black bars on the sides or top and bottom
 	// if the window size doesn't match.
 
-    float w = 1, h = 1;
+    /*float w = 1, h = 1;
 	float aspect = 4.0f / 3.0f;
 
     w = (gRealScreenHeight * aspect) / gRealScreenWidth;
     h = (gRealScreenWidth * (1 / aspect)) / gRealScreenHeight;
 
-    if (w > h) w = 1; else h = 1;
+    if (w > h) w = 1; else h = 1;*/
     
 	// The "old LCD" effect is created by rendering 
 	// with alpha blending
@@ -427,18 +498,16 @@ void updatescreen()
 	}
 
 	// Do the actual rendering.
-	if (gIgnoreAspect)
-	{
-		w = (float)gScreenWidth / (float)tex_w;
-		h = (float)gScreenHeight / (float)tex_h;
+	//if (gIgnoreAspect)
+	//{
 		// Do the actual rendering.
 		glBegin(GL_TRIANGLE_FAN);
 		glTexCoord2f(0,0);              glVertex2f(-1,  1);
-		glTexCoord2f(w,0);        glVertex2f( 1,  1);
-		glTexCoord2f(w,h);  glVertex2f( 1, -1); 
-		glTexCoord2f(0,h);        glVertex2f(-1, -1);
+		glTexCoord2f(u,0);        glVertex2f( 1,  1);
+		glTexCoord2f(u,v);  glVertex2f( 1, -1); 
+		glTexCoord2f(0,v);        glVertex2f(-1, -1);
 		glEnd();
-	}
+	/*}
 	else
 	{
 		// Do the actual rendering.
@@ -449,7 +518,7 @@ void updatescreen()
 		glTexCoord2f(0,v); glVertex2f( -w, -h);
 		glEnd();
 
-	}
+	}*/
 
 	SwapBuffers(gWindowDC);
 }
@@ -477,23 +546,17 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_KILLFOCUS:
 		{
-			focus = 0;
-			ShowCursor(1);
-			ClipCursor(NULL);
+			//::ClipCursor(NULL);
 		}
 		break;
 	case WM_SETFOCUS: 
 		{
-			focus = 1;
-			RECT r;
-			r.top = 0;
-			r.left = 0;
-			r.bottom = gScreenHeight;
-			r.right = gScreenWidth;
-			ClipCursor(&r);
-			SetCursorPos(gScreenWidth / 2, gScreenHeight / 2);
-			ShowCursor(0); // clipcursor doesn't work with cursor disabled. Yay.
-
+			/*if (gMouseclipping)
+			{
+				RECT r;
+				::GetWindowRect(hWnd, &r);
+				::ClipCursor(&r);
+			}*/
 			break;
 		}
 	case WM_LBUTTONDOWN:
@@ -507,24 +570,11 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	case WM_RBUTTONDBLCLK:
 	case WM_NCMOUSEMOVE:
 	case WM_MOUSEMOVE:
-		{
-			if (!focus)
-				return 0;
-			// fix the mouse cursor position..
-			if (!gAltWinPos)
-				lParam -= 480 << 16;
-		}
+		xPos = GET_X_LPARAM(lParam); 
+		yPos = GET_Y_LPARAM(lParam); 
 		break;
 	case WM_WINDOWPOSCHANGING:
-		if (!gAllowResize)
-		{
-			// WC4 tries to resize and -position the window.
-			// Disallow this. The gAllowResize global is so that
-			// we can resize ourselves.
-			WINDOWPOS * p = (WINDOWPOS *)lParam;
-			p->flags |= SWP_NOSIZE | SWP_NOMOVE;
-			return 0;		
-		}
+
 		break;
 	}
 
@@ -566,11 +616,16 @@ void init_gl()
 	gRealScreenHeight = r.bottom;
 
 	gAllowResize = 1;
-	// Go full screen..
-	MoveWindow(gHwnd, 0, -480 * (1 - gAltWinPos), gRealScreenWidth, 
-		       gRealScreenHeight + 480 * (1 - gAltWinPos), 0);
+	RECT rc = {0, 0, gScreenWidth, gScreenHeight};
+	DWORD style = GetWindowLong(gHwnd, GWL_STYLE);
+	AdjustWindowRect(&rc, style, false);
+	rc.left = (gRealScreenWidth - gScreenWidth)/2;
+	rc.right = rc.left + gScreenWidth;
+	rc.top = (gRealScreenHeight - gScreenHeight)/2;
+	rc.bottom = rc.top + gScreenHeight;
+	MoveWindow(gHwnd, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
 	// Set position just in case..
-	SetWindowPos(gHwnd, NULL, 0, -480 * (1 - gAltWinPos), 0, 0, SWP_NOSIZE);
+	//SetWindowPos(gHwnd, NULL, 0, -480 * (1 - gAltWinPos), 0, 0, SWP_NOSIZE);
 	gAllowResize = 0;
 
     PIXELFORMATDESCRIPTOR pfd;
@@ -581,7 +636,6 @@ void init_gl()
     pfd.cColorBits=16;                                                   // Pixel depth
     pfd.cDepthBits=16;                                                   // Zbuffer depth
     pfd.iLayerType=PFD_MAIN_PLANE;                                       // Place the pixelformat on the main plane
-	
 	HGLRC gOpenGLRC = NULL;
 	// this is a bit heavy-handed, but the delay dll loading
 	// does seem to require a bit of work on win7..
@@ -613,15 +667,8 @@ void init_gl()
 		}
 	}
 
-
 	ShowWindow(gHwnd, SW_SHOW);
 	SetForegroundWindow(gHwnd);
-
-	r.top = 0;
-	r.left = 0;
-	r.bottom = gScreenHeight;
-	r.right = gScreenWidth;
-	ClipCursor(&r);
 
 	// Create a timer so we'll get some events all the time
 	SetTimer(gHwnd, 1, 10, NULL);
@@ -699,7 +746,9 @@ HRESULT WINAPI DirectDrawCreateEx(GUID FAR * lpGuid, LPVOID  *lplpDD, REFIID  ii
 
 	if (iid == IID_IDirectDraw7)
 	{
-		logf("IDDRAW7 requested");
+		*lplpDD = (LPVOID) new myIDDraw7();
+
+		return 0;
 	}
 
 	logf("Unsupported ddraw interface version");
@@ -791,16 +840,19 @@ void InitInstance(HANDLE hModule)
 {
 	logf("InitInstance.");
 	// Our extremely simple config file handling..
-	gSmooth=INI_READ_INT("Rendering","bilinear_filter",0);
-	gSmooth=gHalfAndHalf=INI_READ_INT("Rendering","halfnhalf",0);
-	gShowLogo=INI_READ_INT("Rendering","show_logo",0);
-	gOldLCD=INI_READ_INT("Rendering","old_lcd_level",0);
-	gScanDouble=INI_READ_INT("Rendering","wc3scandouble",0);
-	gBlurWc3Video=INI_READ_INT("Rendering","wc3blurvideo",0);
-	gWc3SmallVid=INI_READ_INT("Rendering","wc3smallvid",0);
-	gAltWinPos=INI_READ_INT("Rendering","altwinpos",0);
-	gIgnoreAspect=INI_READ_INT("Rendering","ignore_aspect_ratio",0);
-	gVsync=INI_READ_INT("Rendering","vsync",0);
+	//gSmooth=INI_READ_INT("Rendering","bilinear_filter",0);
+	//gSmooth=gHalfAndHalf=INI_READ_INT("Rendering","halfnhalf",0);
+	//gShowLogo=INI_READ_INT("Rendering","show_logo",0);
+	//gOldLCD=INI_READ_INT("Rendering","old_lcd_level",0);
+	//gScanDouble=INI_READ_INT("Rendering","wc3scandouble",0);
+	//gBlurWc3Video=INI_READ_INT("Rendering","wc3blurvideo",0);
+	//gWc3SmallVid=INI_READ_INT("Rendering","wc3smallvid",0);
+	//gAltWinPos=INI_READ_INT("Rendering","altwinpos",0);
+	//gIgnoreAspect=INI_READ_INT("Rendering","ignore_aspect_ratio",0);
+	//gVsync=INI_READ_INT("Rendering","vsync",0);
+	gOffset=INI_READ_INT("Rendering","yoffset",0);
+	gMouseclipping=INI_READ_INT("Rendering","mouseclipping",0);
+	softCursor=INI_READ_INT("Rendering","softcursor",0);
 
 
 	// Init some defaults..
@@ -814,6 +866,15 @@ void InitInstance(HANDLE hModule)
 	// Store Instance handle into global var
 	gHinst = (HINSTANCE)  hModule;
 
+	DisableThreadLibraryCalls((HMODULE) hModule);
+	DetourTransactionBegin();
+	DetourUpdateThread(GetCurrentThread());
+	DetourAttach(&(PVOID&)CreateWindowEx_fn, myCreateWindowEx);
+	if(DetourTransactionCommit() != NO_ERROR)
+	{
+		logf("Could not hook CreateWindowEx");
+		::ExitProcess(0);
+	}
 	// We'll get the hWnd from setcooperativemode later.
 }
 

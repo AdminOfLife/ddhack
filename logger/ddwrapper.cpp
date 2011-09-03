@@ -41,7 +41,7 @@ HINSTANCE           gl_hThisInstance;
 void logf(void * thisptr, char *msg, ...)
 {	
 	va_list argp;
-	FILE * f = fopen("\\ddraw.log","a");	
+	FILE * f = fopen("ddraw.log","a");	
 	static int t = -1;
 	if (t == -1)
 		t = GetTickCount();
@@ -419,6 +419,28 @@ HRESULT WINAPI DllGetClassObject (const CLSID &rclsid, const IID &riid, void **p
 
 	// Call original dll and return
 	HRESULT h = DllGetClassObject_fn(rclsid, riid, ppv);
+
+	return(h);
+}
+
+HRESULT WINAPI GetSurfaceFromDC(LPDIRECTDRAW7 a, HDC b, LPDIRECTDRAWSURFACE7 *c)
+{
+	logf(0, "Exported function GetSurfaceFromDC");
+	
+	if (!gl_hOriginalDll) LoadOriginalDll(); // looking for the "right ddraw.dll"
+	
+	typedef HRESULT (WINAPI *GetSurfaceFromDC_Type)(LPDIRECTDRAW7 a, HDC b, LPDIRECTDRAWSURFACE7 *c);
+	GetSurfaceFromDC_Type GetSurfaceFromDC_fn = (GetSurfaceFromDC_Type) GetProcAddress( gl_hOriginalDll, "GetSurfaceFromDC");
+    
+    // Debug
+	if (!GetSurfaceFromDC_fn) 
+    {
+        logf(0, "Pointer to original GetSurfaceFromDC function not received");
+        ::ExitProcess(0);
+    }
+
+	// Call original dll and return
+	HRESULT h = GetSurfaceFromDC_fn(a, b, c);
 
 	return(h);
 }

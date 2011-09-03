@@ -1,13 +1,13 @@
 #pragma once
 
-class myIDDrawSurface1;
+class myIDDrawSurface_Generic;
 
 // global variables
 #pragma data_seg (".ddraw_shared")
 extern HINSTANCE gHinst;
 extern HWND      gHwnd;
-extern myIDDrawSurface1 * gPrimarySurface;
-extern myIDDrawSurface1 * gBackBuffer;
+extern myIDDrawSurface_Generic * gPrimarySurface;
+extern myIDDrawSurface_Generic * gBackBuffer;
 extern int gScreenWidth;
 extern int gScreenHeight;
 extern int gScreenBits;

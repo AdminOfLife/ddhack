@@ -15,9 +15,10 @@ DWORD WINAPI D3DParseUnknownCommand(LPVOID lpCmd, LPVOID *lpRetCmd);
 HRESULT WINAPI DllCanUnloadNow(void);
 HRESULT WINAPI DllGetClassObject (const CLSID &rclsid, const IID &riid, void **ppv);
 
+HRESULT WINAPI GetSurfaceFromDC (LPDIRECTDRAW7, HDC, LPDIRECTDRAWSURFACE7 *);
+
 // Exported functions still missing
 /*
-GetSurfaceFromDC
 CheckFullscreen
 CompleteCreateSysmemSurface
 DDGetAttachedSurfaceLcl
