@@ -277,12 +277,16 @@ void updatescreen()
 		case 8:		
 			if (!gHalfAndHalf || gScreenWidth > 320)
 			{
+				myIDDrawPalette *pal = gPrimarySurface->getCurrentPalette();
+				unsigned char *surface = gPrimarySurface->getSurfaceData();
+				int pitch = gPrimarySurface->getPitch();
+				#pragma omp parallel for
 				for (i = 0; i < gScreenHeight; i++)
 				{
 					for (j = 0; j < gScreenWidth; j++)
 					{
-						int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * i + j];
-						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
+						int pix = surface[pitch * i + j];
+						texdata[i*tex_w+j] = *(int*)&(pal->mPal[pix]);
 					}
 				}
 			}
