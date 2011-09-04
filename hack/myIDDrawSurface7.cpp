@@ -320,7 +320,6 @@ HRESULT  __stdcall myIDDrawSurface7::GetDC(HDC FAR *a)
 {
 	logf("myIDDrawSurface7::GetDC");
 	*a = GetDC2(gHwnd);
-	gGDI = 1;
 	return DD_OK;
 }
 
