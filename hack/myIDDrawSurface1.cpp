@@ -262,7 +262,8 @@ HRESULT  __stdcall myIDDrawSurface1::GetColorKey(DWORD a, LPDDCOLORKEY b)
 HRESULT  __stdcall myIDDrawSurface1::GetDC(HDC FAR *a)
 {
 	logf("myIDDrawSurface1::GetDC");
-	return DDERR_UNSUPPORTED;
+	*a = GetDC2(gHwnd);
+	return DD_OK;
 }
 
 
@@ -432,7 +433,7 @@ HRESULT  __stdcall myIDDrawSurface1::Lock(LPRECT a,LPDDSURFACEDESC b,DWORD aFlag
 HRESULT  __stdcall myIDDrawSurface1::ReleaseDC(HDC a)
 {
 	logf("myIDDrawSurface1::ReleaseDC");
-	return DDERR_UNSUPPORTED;
+	return DD_OK;
 }
 
 
@@ -449,7 +450,7 @@ HRESULT  __stdcall myIDDrawSurface1::Restore()
 HRESULT  __stdcall myIDDrawSurface1::SetClipper(LPDIRECTDRAWCLIPPER a)
 {
 	logf("myIDDrawSurface1::SetClipper");
-	return DDERR_UNSUPPORTED;
+	return DD_OK;
 }
 
 
