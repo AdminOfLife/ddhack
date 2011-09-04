@@ -66,25 +66,7 @@ int temp[640*480];
 
 void logf(char *msg, ...)
 {
-#ifdef _WINDOWS
-	va_list argp;
-	FILE * f = fopen("ddhack.log","a");	
-	static int t = -1;
-	if (t == -1)
-		t = GetTickCount();
-	int tn = GetTickCount();
-	
-	fprintf(f,"[%+6dms] (%08x) ", tn-t, 0);
-	t = tn;
-	
-	va_start(argp, msg);
-	vfprintf(f, msg, argp);
-	va_end(argp);
-	
-	fprintf(f,"\n");
-
-	fclose(f);
-#elif 0
+#ifdef _DEBUG
 	va_list argp;
 	static int t = -1;
 	char temp1[256];
