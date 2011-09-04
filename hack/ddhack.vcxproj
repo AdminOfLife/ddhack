@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -68,7 +68,7 @@
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>ddraw.lib;dxguid.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>dxguid.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)\$(TargetName)$(TargetExt)</OutputFile>
       <ModuleDefinitionFile>ddhack.def</ModuleDefinitionFile>
       <DelayLoadDLLs>opengl32.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
@@ -96,7 +96,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>ddraw.lib;dxguid.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>dxguid.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)\$(TargetName)$(TargetExt)</OutputFile>
       <ModuleDefinitionFile>ddhack.def</ModuleDefinitionFile>
       <DelayLoadDLLs>opengl32.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
@@ -119,8 +119,11 @@
     <ClCompile Include="ddhack.cpp" />
     <ClCompile Include="myIDDraw1.cpp" />
     <ClCompile Include="myIDDraw2.cpp" />
+    <ClCompile Include="myIDDraw7.cpp" />
+    <ClCompile Include="myIDDrawClipper.cpp" />
     <ClCompile Include="myIDDrawPalette.cpp" />
     <ClCompile Include="myIDDrawSurface1.cpp" />
+    <ClCompile Include="myIDDrawSurface7.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>

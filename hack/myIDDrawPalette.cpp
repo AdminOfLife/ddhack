@@ -72,7 +72,9 @@ HRESULT  __stdcall myIDDrawPalette::Initialize(LPDIRECTDRAW a, DWORD b, LPPALETT
 HRESULT  __stdcall myIDDrawPalette::SetEntries(DWORD aFlags,DWORD aStartEntry,DWORD aCount,LPPALETTEENTRY aPalEntries)
 {
 	logf("myIDDrawPalette::SetEntries(%d,%d,%d,%08x)", aFlags, aStartEntry, aCount, aPalEntries);
-	memcpy(mPal, aPalEntries, 256 * sizeof(PALETTEENTRY));
+	memcpy(mPal + aStartEntry, aPalEntries, aCount * sizeof(PALETTEENTRY));
+	for (int i = 0; i < 256; i++)
+		mPal[i].peFlags = 0;
 	updatescreen();
 	return NOERROR;
 }

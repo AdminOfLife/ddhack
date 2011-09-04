@@ -19,7 +19,7 @@ HRESULT __stdcall myIDDraw1::QueryInterface (REFIID a, LPVOID FAR * b)
 	if (a == IID_IDirectDraw) iid = "IID_IDirectDraw";
 	if (a == IID_IDirectDraw2) iid = "IID_IDirectDraw2";
 //	if (a == IID_IDirectDraw4) iid = "IID_IDirectDraw4";
-//	if (a == IID_IDirectDraw7) iid = "IID_IDirectDraw7";
+	if (a == IID_IDirectDraw7) iid = "IID_IDirectDraw7";
 
 	logf("myIDDraw1::QueryInterface(%s,%08x)",iid,b);
 
@@ -32,6 +32,12 @@ HRESULT __stdcall myIDDraw1::QueryInterface (REFIID a, LPVOID FAR * b)
 	if (a == IID_IDirectDraw2)
 	{
 		*b = new myIDDraw2();
+		return NOERROR;
+	}
+
+	if (a == IID_IDirectDraw7)
+	{
+		*b = new myIDDraw7();
 		return NOERROR;
 	}
 	return DDERR_UNSUPPORTED;

@@ -37,8 +37,8 @@
 #pragma data_seg (".ddraw_shared")
 HINSTANCE gHinst;
 HWND gHwnd;        
-myIDDrawSurface1 * gPrimarySurface;
-myIDDrawSurface1 * gBackBuffer;
+myIDDrawSurface_Generic * gPrimarySurface;
+myIDDrawSurface_Generic * gBackBuffer;
 int gScreenWidth;
 int gScreenHeight;
 int gScreenBits;
@@ -66,7 +66,25 @@ int temp[640*480];
 
 void logf(char *msg, ...)
 {
-#ifdef _DEBUG
+#ifdef _WINDOWS
+	va_list argp;
+	FILE * f = fopen("ddhack.log","a");	
+	static int t = -1;
+	if (t == -1)
+		t = GetTickCount();
+	int tn = GetTickCount();
+	
+	fprintf(f,"[%+6dms] (%08x) ", tn-t, 0);
+	t = tn;
+	
+	va_start(argp, msg);
+	vfprintf(f, msg, argp);
+	va_end(argp);
+	
+	fprintf(f,"\n");
+
+	fclose(f);
+#elif 0
 	va_list argp;
 	static int t = -1;
 	char temp1[256];
@@ -133,13 +151,13 @@ void updatescreen()
 	// If we're not set up yet, or it's been less or equal than 10ms since
 	// the last update, skip the update.
 	if (gPrimarySurface == NULL ||
-		(gScreenBits == 8 && gPrimarySurface->mCurrentPalette == NULL) ||
+		(gScreenBits == 8 && gPrimarySurface->getCurrentPalette() == NULL) ||
 		(tick - gLastUpdate) <= 10)
 	{
 		if (gPrimarySurface == NULL)
 			logf("primary surface is NULL");
 		else
-		if (gPrimarySurface->mCurrentPalette == NULL)
+		if (gPrimarySurface->getCurrentPalette() == NULL)
 			logf("primary palette is NULL");
 		if ((tick - gLastUpdate) <= 10)
 			logf("less than 10ms since last update");
@@ -160,14 +178,14 @@ void updatescreen()
 //	if (frame == 20)
 	{
 		FILE * f = fopen("frame100dump.dat","wb");
-		fwrite(gPrimarySurface->mSurfaceData,640*480,1,f);
-		fwrite(gPrimarySurface->mCurrentPalette->mPal,256*4,1,f);
+		fwrite(gPrimarySurface->getSurfaceData(),640*480,1,f);
+		fwrite(gPrimarySurface->getCurrentPalette()->mPal,256*4,1,f);
 		fclose(f);
 	}
 #elif defined(LOADFRAME)
 		FILE * f = fopen("frame100dump.dat","rb");
-		fread(gPrimarySurface->mSurfaceData,640*480,1,f);
-		fread(gPrimarySurface->mCurrentPalette->mPal,256*4,1,f);
+		fread(gPrimarySurface->getSurfaceData(),640*480,1,f);
+		fread(gPrimarySurface->getCurrentPalette()->mPal,256*4,1,f);
 		fclose(f);
 
 #endif
@@ -199,9 +217,9 @@ void updatescreen()
 		{
 			// in wc3, only places where these two horizontal spans are
 			// black is when we're viewing video.
-			if (gPrimarySurface->mSurfaceData[gPrimarySurface->mPitch * 70 + i])
+			if (gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * 70 + i])
 				wc3video = 0;
-			if (gPrimarySurface->mSurfaceData[gPrimarySurface->mPitch * (gScreenHeight - 70) + i])
+			if (gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (gScreenHeight - 70) + i])
 				wc3video = 0;
 		}
 
@@ -210,8 +228,8 @@ void updatescreen()
 			if (wc3video)
 			{
 				for (i = 71; i < gScreenHeight - 70; i+=2)
-					memcpy(gPrimarySurface->mSurfaceData + gPrimarySurface->mPitch * (i-1),
-					gPrimarySurface->mSurfaceData + gPrimarySurface->mPitch * i,
+					memcpy(gPrimarySurface->getSurfaceData() + gPrimarySurface->getPitch() * (i-1),
+					gPrimarySurface->getSurfaceData() + gPrimarySurface->getPitch() * i,
 					gScreenWidth);			
 			}
 		}
@@ -226,8 +244,8 @@ void updatescreen()
 				{
 					for (j = 0; j < gScreenWidth; j++)
 					{
-						int pix = gPrimarySurface->mSurfaceData[gPrimarySurface->mPitch * i + j];
-						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->mCurrentPalette->mPal[pix]);
+						int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * i + j];
+						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
 					}
 				}
 			}
@@ -239,8 +257,8 @@ void updatescreen()
 				{
 					for (j = 0; j < gScreenWidth * 2; j++)
 					{
-						int pix = gPrimarySurface->mSurfaceData[gPrimarySurface->mPitch * (i / 2) + (j / 2)];
-						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->mCurrentPalette->mPal[pix]);
+						int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (i / 2) + (j / 2)];
+						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
 					}
 				}
 			}
@@ -248,8 +266,8 @@ void updatescreen()
 		case 16:
 			{
 				// wc4 16bit mode is actually 15bit - 1:5:5:5
-				unsigned short * surf = (unsigned short *)gPrimarySurface->mSurfaceData;
-				int pitch = gPrimarySurface->mPitch / 2;
+				unsigned short * surf = (unsigned short *)gPrimarySurface->getSurfaceData();
+				int pitch = gPrimarySurface->getPitch() / 2;
 				for (i = 0; i < gScreenHeight; i++)
 				{
 					for (j = 0; j < gScreenWidth; j++)
@@ -275,8 +293,8 @@ void updatescreen()
 			{
 				// the "24 bit" graphics mode in wc4 is actually 15 bits with
 				// 9 bits of padding!
-				char * surf = (char *)gPrimarySurface->mSurfaceData;
-				int pitch = gPrimarySurface->mPitch / 3;
+				char * surf = (char *)gPrimarySurface->getSurfaceData();
+				int pitch = gPrimarySurface->getPitch() / 3;
 				for (i = 0; i < gScreenHeight; i++)
 				{
 					for (j = 0; j < gScreenWidth; j++)
@@ -699,7 +717,9 @@ HRESULT WINAPI DirectDrawCreateEx(GUID FAR * lpGuid, LPVOID  *lplpDD, REFIID  ii
 
 	if (iid == IID_IDirectDraw7)
 	{
-		logf("IDDRAW7 requested");
+		*lplpDD = (LPVOID) new myIDDraw7();
+		
+		return 0;
 	}
 
 	logf("Unsupported ddraw interface version");
