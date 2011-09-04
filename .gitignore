@@ -6,3 +6,10 @@ hack/ddhack.vcxproj.user
 hack/ipch
 hack/Release
 hack/Debug
+hack/out
+logger/Debug
+logger/out
+logger/ipch
+logger/ddwrapper.vcxproj.user
+logger/ddwrapper.sdf
+logger/ddwrapper.suo

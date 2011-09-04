@@ -115,6 +115,7 @@ void getgdibitmap()
 			
 	DeleteDC(hDC);
 	DeleteObject(tempbitmap);
+	//SendMessage(gHwnd, WM_ERASEBKGND, 0, 0);
 }
 
 
@@ -194,142 +195,145 @@ void updatescreen()
 		tex_h = (gScreenHeight + 3) & ~(3);
 	}
 
-	wc3video = 1;
-
-	for (i = 0; wc3video && i < gScreenWidth; i++)
-	{
-		// in wc3, only places where these two horizontal spans are
-		// black is when we're viewing video.
-		if (gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * 70 + i])
-			wc3video = 0;
-		if (gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (gScreenHeight - 70) + i])
-			wc3video = 0;
-	}
-
-	if (gScanDouble)
-	{
-		if (wc3video)
-		{
-			for (i = 71; i < gScreenHeight - 70; i+=2)
-				memcpy(gPrimarySurface->getSurfaceData() + gPrimarySurface->getPitch() * (i-1),
-				gPrimarySurface->getSurfaceData() + gPrimarySurface->getPitch() * i,
-				gScreenWidth);			
-		}
-	}
-
-
-	switch (gScreenBits)
-	{
-	case 8:		
-		if (!gHalfAndHalf || gScreenWidth > 320)
-		{
-			for (i = 0; i < gScreenHeight; i++)
-			{
-				for (j = 0; j < gScreenWidth; j++)
-				{
-					int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * i + j];
-					texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
-				}
-			}
-		}
-		else
-		{
-			// half'n'half mode - scale up 2x with software, let
-			// hardware scale up to desktop resolution with bilinear
-			for (i = 0; i < gScreenHeight * 2; i++)
-			{
-				for (j = 0; j < gScreenWidth * 2; j++)
-				{
-					int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (i / 2) + (j / 2)];
-					texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
-				}
-			}
-		}
-		break;
-	case 16:
-		{
-			// wc4 16bit mode is actually 15bit - 1:5:5:5
-			unsigned short * surf = (unsigned short *)gPrimarySurface->getSurfaceData();
-			int pitch = gPrimarySurface->getPitch() / 2;
-			for (i = 0; i < gScreenHeight; i++)
-			{
-				for (j = 0; j < gScreenWidth; j++)
-				{
-					int pix = surf[pitch * i + j];				
-						
-					int red   = (pix >> 10) & ((1 << 5) - 1);
-					int green = (pix >>  5) & ((1 << 5) - 1);
-					int blue  = (pix >>  0) & ((1 << 5) - 1);
-						
-					// fill bottom bits
-					red = (red << 3) | (red >> 2);
-					green = (green << 3) | (green >> 2);
-					blue = (blue << 3) | (blue >> 2);
-						
-
-					texdata[i*tex_w+j] = (blue << 16) | (green << 8) | red;
-				}
-			}
-		}
-		break;
-	case 24:
-		{
-			// the "24 bit" graphics mode in wc4 is actually 15 bits with
-			// 9 bits of padding!
-			char * surf = (char *)gPrimarySurface->getSurfaceData();
-			int pitch = gPrimarySurface->getPitch() / 3;
-			for (i = 0; i < gScreenHeight; i++)
-			{
-				for (j = 0; j < gScreenWidth; j++)
-				{
-					int pix = *(short*)(surf + (pitch * i + j) * 3);				
-						
-					int red   = (pix >> 10) & ((1 << 5) - 1);
-					int green = (pix >>  5) & ((1 << 5) - 1);
-					int blue  = (pix >>  0) & ((1 << 5) - 1);
-						
-					// fill bottom bits
-					red = (red << 3) | (red >> 2);
-					green = (green << 3) | (green >> 2);
-					blue = (blue << 3) | (blue >> 2);
-
-					texdata[i*tex_w+j] = (blue << 16) | (green << 8) | red;
-				}
-			}
-		}
-		break;
-	}
-
-	if (wc3video && gBlurWc3Video)
-	{
-		// The video blur is basically a 3x3 matrix
-		// which emphasizes the center a lot.
-		// Implemented in a lazy manner, directly
-		// to the same buffer - yes, I know..
-		// Doesn't matter much in practise.
-		for (i = 70; i < gScreenHeight - 70; i++)
-		{
-			for (j = 1; j < gScreenWidth - 1; j++)
-			{
-				int pix =
-					((texdata[i * tex_w + j         - 1] & 0xf8f8f8) >> 3) +
-					((texdata[i * tex_w + j         + 1] & 0xf8f8f8) >> 3) +
-					((texdata[i * tex_w + j - tex_w    ] & 0xf8f8f8) >> 3) +
-					((texdata[i * tex_w + j + tex_w    ] & 0xf8f8f8) >> 3) +
-					((texdata[i * tex_w + j - tex_w - 1] & 0xf8f8f8) >> 3) +
-					((texdata[i * tex_w + j - tex_w + 1] & 0xf8f8f8) >> 3) +
-					((texdata[i * tex_w + j + tex_w - 1] & 0xf8f8f8) >> 3) +
-					((texdata[i * tex_w + j + tex_w + 1] & 0xf8f8f8) >> 3);
-				texdata[i * tex_w + j] = 
-					((texdata[i * tex_w + j] & 0xfefefe) >> 1) +
-						                ((pix & 0xfefefe) >> 1);
-			}
-		}
-	}
-
 	if (gGDI)
 	{
+		// In GDI mode we'll skip most of the processing..
 		getgdibitmap();
+	}
+	else
+	{
+		wc3video = 1;
+		
+		for (i = 0; wc3video && i < gScreenWidth; i++)
+		{
+			// in wc3, only places where these two horizontal spans are
+			// black is when we're viewing video.
+			if (gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * 70 + i])
+				wc3video = 0;
+			if (gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (gScreenHeight - 70) + i])
+				wc3video = 0;
+		}
+
+		if (gScanDouble)
+		{
+			if (wc3video)
+			{
+				for (i = 71; i < gScreenHeight - 70; i+=2)
+					memcpy(gPrimarySurface->getSurfaceData() + gPrimarySurface->getPitch() * (i-1),
+					gPrimarySurface->getSurfaceData() + gPrimarySurface->getPitch() * i,
+					gScreenWidth);			
+			}
+		}
+
+
+		switch (gScreenBits)
+		{
+		case 8:		
+			if (!gHalfAndHalf || gScreenWidth > 320)
+			{
+				for (i = 0; i < gScreenHeight; i++)
+				{
+					for (j = 0; j < gScreenWidth; j++)
+					{
+						int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * i + j];
+						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
+					}
+				}
+			}
+			else
+			{
+				// half'n'half mode - scale up 2x with software, let
+				// hardware scale up to desktop resolution with bilinear
+				for (i = 0; i < gScreenHeight * 2; i++)
+				{
+					for (j = 0; j < gScreenWidth * 2; j++)
+					{
+						int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (i / 2) + (j / 2)];
+						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
+					}
+				}
+			}
+			break;
+		case 16:
+			{
+				// wc4 16bit mode is actually 15bit - 1:5:5:5
+				unsigned short * surf = (unsigned short *)gPrimarySurface->getSurfaceData();
+				int pitch = gPrimarySurface->getPitch() / 2;
+				for (i = 0; i < gScreenHeight; i++)
+				{
+					for (j = 0; j < gScreenWidth; j++)
+					{
+						int pix = surf[pitch * i + j];				
+							
+						int red   = (pix >> 10) & ((1 << 5) - 1);
+						int green = (pix >>  5) & ((1 << 5) - 1);
+						int blue  = (pix >>  0) & ((1 << 5) - 1);
+							
+						// fill bottom bits
+						red = (red << 3) | (red >> 2);
+						green = (green << 3) | (green >> 2);
+						blue = (blue << 3) | (blue >> 2);
+							
+
+						texdata[i*tex_w+j] = (blue << 16) | (green << 8) | red;
+					}
+				}
+			}
+			break;
+		case 24:
+			{
+				// the "24 bit" graphics mode in wc4 is actually 15 bits with
+				// 9 bits of padding!
+				char * surf = (char *)gPrimarySurface->getSurfaceData();
+				int pitch = gPrimarySurface->getPitch() / 3;
+				for (i = 0; i < gScreenHeight; i++)
+				{
+					for (j = 0; j < gScreenWidth; j++)
+					{
+						int pix = *(short*)(surf + (pitch * i + j) * 3);				
+							
+						int red   = (pix >> 10) & ((1 << 5) - 1);
+						int green = (pix >>  5) & ((1 << 5) - 1);
+						int blue  = (pix >>  0) & ((1 << 5) - 1);
+							
+						// fill bottom bits
+						red = (red << 3) | (red >> 2);
+						green = (green << 3) | (green >> 2);
+						blue = (blue << 3) | (blue >> 2);
+
+						texdata[i*tex_w+j] = (blue << 16) | (green << 8) | red;
+					}
+				}
+			}
+			break;
+		}
+
+		if (wc3video && gBlurWc3Video)
+		{
+			// The video blur is basically a 3x3 matrix
+			// which emphasizes the center a lot.
+			// Implemented in a lazy manner, directly
+			// to the same buffer - yes, I know..
+			// Doesn't matter much in practise.
+			for (i = 70; i < gScreenHeight - 70; i++)
+			{
+				for (j = 1; j < gScreenWidth - 1; j++)
+				{
+					int pix =
+						((texdata[i * tex_w + j         - 1] & 0xf8f8f8) >> 3) +
+						((texdata[i * tex_w + j         + 1] & 0xf8f8f8) >> 3) +
+						((texdata[i * tex_w + j - tex_w    ] & 0xf8f8f8) >> 3) +
+						((texdata[i * tex_w + j + tex_w    ] & 0xf8f8f8) >> 3) +
+						((texdata[i * tex_w + j - tex_w - 1] & 0xf8f8f8) >> 3) +
+						((texdata[i * tex_w + j - tex_w + 1] & 0xf8f8f8) >> 3) +
+						((texdata[i * tex_w + j + tex_w - 1] & 0xf8f8f8) >> 3) +
+						((texdata[i * tex_w + j + tex_w + 1] & 0xf8f8f8) >> 3);
+					texdata[i * tex_w + j] = 
+						((texdata[i * tex_w + j] & 0xfefefe) >> 1) +
+											((pix & 0xfefefe) >> 1);
+				}
+			}
+		}
 	}
 
 	// Logo is "watermarked" over the framebuffer.. so its size
@@ -353,7 +357,7 @@ void updatescreen()
 			}
 		}
 	}
-
+	
     // upload texture
     glTexImage2D(GL_TEXTURE_2D,    // target
                  0,                // level
