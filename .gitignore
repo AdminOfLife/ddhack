@@ -4,3 +4,4 @@ hack/Release
 hack/ddhack.vcxproj.user
 hack/ddhack.sdf
 hack/out
+hack/ddhack.suo

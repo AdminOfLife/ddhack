@@ -589,93 +589,106 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 void init_gl()
 {	
 	// Only init once..
-	if (origfunc != NULL)
-		return;
-
-	// Get the application's window procedure..
-	origfunc = (WNDPROC)GetWindowLong(gHwnd, GWL_WNDPROC);
-	// ..and replace it with our own.
-	SetWindowLong(gHwnd, GWL_WNDPROC, (long)newwinproc);
+	if (origfunc == NULL)
+	{
+		// Get the application's window procedure..
+		origfunc = (WNDPROC)GetWindowLong(gHwnd, GWL_WNDPROC);
+		// ..and replace it with our own.
+		SetWindowLong(gHwnd, GWL_WNDPROC, (long)newwinproc);
 	
-	RECT r;
-	r.top = 0;
-	r.left = 0;
-	// lowest fallback: 640x480 window
-	r.bottom = 480;
-	r.right = 640;
+		RECT r;
+		r.top = 0;
+		r.left = 0;
+		// lowest fallback: 640x480 window
+		r.bottom = 480;
+		r.right = 640;
 
-	// next up: work area for primary display
-	SystemParametersInfo(SPI_GETWORKAREA,0,&r,0);
+		// next up: work area for primary display
+		SystemParametersInfo(SPI_GETWORKAREA,0,&r,0);
 
-	// best: full screen
-	MONITORINFO mon;
-	mon.cbSize = sizeof(mon);
+		// best: full screen
+		MONITORINFO mon;
+		mon.cbSize = sizeof(mon);
 
-	if (GetMonitorInfo(MonitorFromWindow(gHwnd,MONITOR_DEFAULTTOPRIMARY),&mon))
-	{
-		r = mon.rcMonitor;
-	}
-
-	gRealScreenWidth = r.right;
-	gRealScreenHeight = r.bottom;
-
-	gAllowResize = 1;
-	RECT rc = {0, 0, gScreenWidth, gScreenHeight};
-	DWORD style = GetWindowLong(gHwnd, GWL_STYLE);
-	AdjustWindowRect(&rc, style, false);
-	rc.left = (gRealScreenWidth - gScreenWidth)/2;
-	rc.right = rc.left + gScreenWidth;
-	rc.top = (gRealScreenHeight - gScreenHeight)/2;
-	rc.bottom = rc.top + gScreenHeight;
-	MoveWindow(gHwnd, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
-	// Set position just in case..
-	//SetWindowPos(gHwnd, NULL, 0, -480 * (1 - gAltWinPos), 0, 0, SWP_NOSIZE);
-	gAllowResize = 0;
-
-    PIXELFORMATDESCRIPTOR pfd;
-    pfd.nSize=sizeof(PIXELFORMATDESCRIPTOR);                             // Size 
-    pfd.nVersion=1;                                                      // Version
-    pfd.dwFlags=PFD_DRAW_TO_WINDOW|PFD_SUPPORT_OPENGL|PFD_DOUBLEBUFFER;  // Selected flags
-    pfd.iPixelType=PFD_TYPE_RGBA;                                        // Pixelformat
-    pfd.cColorBits=16;                                                   // Pixel depth
-    pfd.cDepthBits=16;                                                   // Zbuffer depth
-    pfd.iLayerType=PFD_MAIN_PLANE;                                       // Place the pixelformat on the main plane
-	HGLRC gOpenGLRC = NULL;
-	// this is a bit heavy-handed, but the delay dll loading
-	// does seem to require a bit of work on win7..
-	// (and delay-loading the opengl dll is required to work in xp)
-	// Oddly enough, doing LoadLibrary on opengl didn't work in xp.
-	do {
-		Sleep(50);
-		gWindowDC=GetDC(gHwnd);
-		int pf=ChoosePixelFormat(gWindowDC, &pfd);
-		SetPixelFormat(gWindowDC, pf, &pfd);
-		gOpenGLRC = wglCreateContext(gWindowDC);
-	} while (!gOpenGLRC);
-
-	wglMakeCurrent(gWindowDC, gOpenGLRC);
-	char *glext = (char *)glGetString(GL_EXTENSIONS);
-	if(glext && strstr(glext, "WGL_EXT_swap_control"))
-	{
-		BOOL (APIENTRY *wglSwapIntervalEXT)(int) = (BOOL (APIENTRY *)(int))wglGetProcAddress("wglSwapIntervalEXT");
-		if(wglSwapIntervalEXT)
+		if (GetMonitorInfo(MonitorFromWindow(gHwnd,MONITOR_DEFAULTTOPRIMARY),&mon))
 		{
-			if(gVsync)
+			r = mon.rcMonitor;
+		}
+
+		gRealScreenWidth = r.right;
+		gRealScreenHeight = r.bottom;
+
+		gAllowResize = 1;
+		RECT rc = {0, 0, gScreenWidth, gScreenHeight};
+		DWORD style = GetWindowLong(gHwnd, GWL_STYLE);
+		AdjustWindowRect(&rc, style, false);
+		rc.left = (gRealScreenWidth - gScreenWidth)/2;
+		rc.right = rc.left + gScreenWidth;
+		rc.top = (gRealScreenHeight - gScreenHeight)/2;
+		rc.bottom = rc.top + gScreenHeight;
+		MoveWindow(gHwnd, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
+		// Set position just in case..
+		//SetWindowPos(gHwnd, NULL, 0, -480 * (1 - gAltWinPos), 0, 0, SWP_NOSIZE);
+		gAllowResize = 0;
+
+		PIXELFORMATDESCRIPTOR pfd;
+		pfd.nSize=sizeof(PIXELFORMATDESCRIPTOR);                             // Size 
+		pfd.nVersion=1;                                                      // Version
+		pfd.dwFlags=PFD_DRAW_TO_WINDOW|PFD_SUPPORT_OPENGL|PFD_DOUBLEBUFFER;  // Selected flags
+		pfd.iPixelType=PFD_TYPE_RGBA;                                        // Pixelformat
+		pfd.cColorBits=16;                                                   // Pixel depth
+		pfd.cDepthBits=16;                                                   // Zbuffer depth
+		pfd.iLayerType=PFD_MAIN_PLANE;                                       // Place the pixelformat on the main plane
+		HGLRC gOpenGLRC = NULL;
+		// this is a bit heavy-handed, but the delay dll loading
+		// does seem to require a bit of work on win7..
+		// (and delay-loading the opengl dll is required to work in xp)
+		// Oddly enough, doing LoadLibrary on opengl didn't work in xp.
+		do {
+			Sleep(50);
+			gWindowDC=GetDC(gHwnd);
+			int pf=ChoosePixelFormat(gWindowDC, &pfd);
+			SetPixelFormat(gWindowDC, pf, &pfd);
+			gOpenGLRC = wglCreateContext(gWindowDC);
+		} while (!gOpenGLRC);
+
+		wglMakeCurrent(gWindowDC, gOpenGLRC);
+		char *glext = (char *)glGetString(GL_EXTENSIONS);
+		if(glext && strstr(glext, "WGL_EXT_swap_control"))
+		{
+			BOOL (APIENTRY *wglSwapIntervalEXT)(int) = (BOOL (APIENTRY *)(int))wglGetProcAddress("wglSwapIntervalEXT");
+			if(wglSwapIntervalEXT)
 			{
-				wglSwapIntervalEXT(1);
-			}
-			else
-			{
-				wglSwapIntervalEXT(0);
+				if(gVsync)
+				{
+					wglSwapIntervalEXT(1);
+				}
+				else
+				{
+					wglSwapIntervalEXT(0);
+				}
 			}
 		}
+
+		ShowWindow(gHwnd, SW_SHOW);
+		SetForegroundWindow(gHwnd);
+
+		// Create a timer so we'll get some events all the time
+		SetTimer(gHwnd, 1, 10, NULL);
 	}
-
-	ShowWindow(gHwnd, SW_SHOW);
-	SetForegroundWindow(gHwnd);
-
-	// Create a timer so we'll get some events all the time
-	SetTimer(gHwnd, 1, 10, NULL);
+	else
+	{
+		gAllowResize = 1;
+		RECT rc = {0, 0, gScreenWidth, gScreenHeight};
+		DWORD style = GetWindowLong(gHwnd, GWL_STYLE);
+		AdjustWindowRect(&rc, style, false);
+		rc.left = (gRealScreenWidth - gScreenWidth)/2;
+		rc.right = rc.left + gScreenWidth;
+		rc.top = (gRealScreenHeight - gScreenHeight)/2;
+		rc.bottom = rc.top + gScreenHeight;
+		MoveWindow(gHwnd, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
+		gAllowResize = 0;
+	}
 }
 
 BOOL APIENTRY DllMain( HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
