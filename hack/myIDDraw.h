@@ -6,6 +6,7 @@ inline HDC GetDC2(HWND hWnd)
 }
 
 class myIDDrawPalette;
+class myIDDrawClipper;
 
 class myIDDraw1 : public IDirectDraw
 {
@@ -183,7 +184,10 @@ public:
 	virtual int getPitch() const { return mPitch; }
 
 	DDSURFACEDESC mSurfaceDesc;
+	DDCOLORKEY mSrcColorKey;
+	DDCOLORKEY mDestColorKey;
 	myIDDrawPalette *mCurrentPalette;
+	myIDDrawClipper *mClipper;
 	unsigned char * mSurfaceData;
 	unsigned char * mRealSurfaceData;
 	int mWidth;
@@ -263,7 +267,10 @@ public:
 	virtual int getPitch() const { return mPitch; }
 
 	DDSURFACEDESC2 mSurfaceDesc;
+	DDCOLORKEY mSrcColorKey;
+	DDCOLORKEY mDestColorKey;
 	myIDDrawPalette *mCurrentPalette;
+	myIDDrawClipper *mClipper;
 	unsigned char * mSurfaceData;
 	unsigned char * mRealSurfaceData;
 	int mWidth;

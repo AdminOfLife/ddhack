@@ -44,7 +44,7 @@ int gScreenHeight;
 int gScreenBits;
 int gRealScreenWidth;
 int gRealScreenHeight;
-int texdata[2048*1024];
+unsigned int texdata[2048*2048];
 WNDPROC origfunc = NULL;
 HDC gWindowDC;
 int gLastUpdate = -1;
@@ -60,7 +60,9 @@ int gWc3SmallVid = 0;
 int gIgnoreAspect = 0;
 int gGDI = 0;
 int gVsync = 0;
-int temp[640*480];
+int tex_w = 0;
+int tex_h = 0;
+unsigned int temp[2048*2048];
 
 #pragma data_seg ()
 
@@ -89,26 +91,26 @@ void logf(char *msg, ...)
 
 void getgdibitmap()
 {
-	// the 'gdi mode' assumes 640x480..
 	int i, j;
 	HDC hDC = CreateCompatibleDC(gWindowDC);
-	HBITMAP tempbitmap = CreateCompatibleBitmap(gWindowDC,640,480);
+	HBITMAP tempbitmap = CreateCompatibleBitmap(gWindowDC,gScreenWidth,gScreenHeight);
+	memset(temp, 0, sizeof(int)*2048*2048);
 	SelectObject(hDC, tempbitmap);
-	BitBlt(hDC,0,0,640,480,gWindowDC,0,0,SRCCOPY);
+	BitBlt(hDC,0,0,gScreenWidth,gScreenHeight,gWindowDC,0,0,SRCCOPY);
 
 	// assumption: 32bpp desktop mode
-	GetBitmapBits(tempbitmap,640*480*4,temp);	  
+	GetBitmapBits(tempbitmap,gScreenWidth*gScreenHeight*4,temp);	  
 
-	for (i = 0; i < 640; i++)
+	for (i = 0; i < gScreenWidth; i++)
 	{
-	  for (j = 0; j < 480; j++)
-	  {
-		  // should use tex_w, but we know it'll be 1024..
-		  texdata[j*1024+i] = 	  
-			(temp[j*640+i] & 0x00ff00) |
-			(temp[j*640+i] >> 16) |
-			(temp[j*640+i] << 16);
-	  }
+		for (j = 0; j < gScreenHeight; j++)
+		{
+			if (temp[j*gScreenWidth+i] != 0)
+				texdata[j*tex_w+i] = 	  
+					(temp[j*gScreenWidth+i] & 0x00ff00) |
+					(temp[j*gScreenWidth+i] >> 16) |
+					(temp[j*gScreenWidth+i] << 16);
+		}
 	}
 			
 	DeleteDC(hDC);
@@ -173,11 +175,11 @@ void updatescreen()
 #endif
 
 	gLastUpdate = tick;
-
+	
 	// texture size stuff probably should be global
 	// and calculated once per mode init..
-	int tex_w = 512;
-	int tex_h = 256;	
+	tex_w = 512;
+	tex_h = 256;	
 	int i, j;
 
 	if (gScreenWidth > 320 || gHalfAndHalf)
@@ -186,145 +188,148 @@ void updatescreen()
 		tex_h *= 2;
 	}
 
+	if (tex_w < gScreenWidth || tex_h < gScreenHeight)
+	{
+		tex_w = (gScreenWidth + 3) & ~(3);
+		tex_h = (gScreenHeight + 3) & ~(3);
+	}
+
+	wc3video = 1;
+
+	for (i = 0; wc3video && i < gScreenWidth; i++)
+	{
+		// in wc3, only places where these two horizontal spans are
+		// black is when we're viewing video.
+		if (gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * 70 + i])
+			wc3video = 0;
+		if (gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (gScreenHeight - 70) + i])
+			wc3video = 0;
+	}
+
+	if (gScanDouble)
+	{
+		if (wc3video)
+		{
+			for (i = 71; i < gScreenHeight - 70; i+=2)
+				memcpy(gPrimarySurface->getSurfaceData() + gPrimarySurface->getPitch() * (i-1),
+				gPrimarySurface->getSurfaceData() + gPrimarySurface->getPitch() * i,
+				gScreenWidth);			
+		}
+	}
+
+
+	switch (gScreenBits)
+	{
+	case 8:		
+		if (!gHalfAndHalf || gScreenWidth > 320)
+		{
+			for (i = 0; i < gScreenHeight; i++)
+			{
+				for (j = 0; j < gScreenWidth; j++)
+				{
+					int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * i + j];
+					texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
+				}
+			}
+		}
+		else
+		{
+			// half'n'half mode - scale up 2x with software, let
+			// hardware scale up to desktop resolution with bilinear
+			for (i = 0; i < gScreenHeight * 2; i++)
+			{
+				for (j = 0; j < gScreenWidth * 2; j++)
+				{
+					int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (i / 2) + (j / 2)];
+					texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
+				}
+			}
+		}
+		break;
+	case 16:
+		{
+			// wc4 16bit mode is actually 15bit - 1:5:5:5
+			unsigned short * surf = (unsigned short *)gPrimarySurface->getSurfaceData();
+			int pitch = gPrimarySurface->getPitch() / 2;
+			for (i = 0; i < gScreenHeight; i++)
+			{
+				for (j = 0; j < gScreenWidth; j++)
+				{
+					int pix = surf[pitch * i + j];				
+						
+					int red   = (pix >> 10) & ((1 << 5) - 1);
+					int green = (pix >>  5) & ((1 << 5) - 1);
+					int blue  = (pix >>  0) & ((1 << 5) - 1);
+						
+					// fill bottom bits
+					red = (red << 3) | (red >> 2);
+					green = (green << 3) | (green >> 2);
+					blue = (blue << 3) | (blue >> 2);
+						
+
+					texdata[i*tex_w+j] = (blue << 16) | (green << 8) | red;
+				}
+			}
+		}
+		break;
+	case 24:
+		{
+			// the "24 bit" graphics mode in wc4 is actually 15 bits with
+			// 9 bits of padding!
+			char * surf = (char *)gPrimarySurface->getSurfaceData();
+			int pitch = gPrimarySurface->getPitch() / 3;
+			for (i = 0; i < gScreenHeight; i++)
+			{
+				for (j = 0; j < gScreenWidth; j++)
+				{
+					int pix = *(short*)(surf + (pitch * i + j) * 3);				
+						
+					int red   = (pix >> 10) & ((1 << 5) - 1);
+					int green = (pix >>  5) & ((1 << 5) - 1);
+					int blue  = (pix >>  0) & ((1 << 5) - 1);
+						
+					// fill bottom bits
+					red = (red << 3) | (red >> 2);
+					green = (green << 3) | (green >> 2);
+					blue = (blue << 3) | (blue >> 2);
+
+					texdata[i*tex_w+j] = (blue << 16) | (green << 8) | red;
+				}
+			}
+		}
+		break;
+	}
+
+	if (wc3video && gBlurWc3Video)
+	{
+		// The video blur is basically a 3x3 matrix
+		// which emphasizes the center a lot.
+		// Implemented in a lazy manner, directly
+		// to the same buffer - yes, I know..
+		// Doesn't matter much in practise.
+		for (i = 70; i < gScreenHeight - 70; i++)
+		{
+			for (j = 1; j < gScreenWidth - 1; j++)
+			{
+				int pix =
+					((texdata[i * tex_w + j         - 1] & 0xf8f8f8) >> 3) +
+					((texdata[i * tex_w + j         + 1] & 0xf8f8f8) >> 3) +
+					((texdata[i * tex_w + j - tex_w    ] & 0xf8f8f8) >> 3) +
+					((texdata[i * tex_w + j + tex_w    ] & 0xf8f8f8) >> 3) +
+					((texdata[i * tex_w + j - tex_w - 1] & 0xf8f8f8) >> 3) +
+					((texdata[i * tex_w + j - tex_w + 1] & 0xf8f8f8) >> 3) +
+					((texdata[i * tex_w + j + tex_w - 1] & 0xf8f8f8) >> 3) +
+					((texdata[i * tex_w + j + tex_w + 1] & 0xf8f8f8) >> 3);
+				texdata[i * tex_w + j] = 
+					((texdata[i * tex_w + j] & 0xfefefe) >> 1) +
+						                ((pix & 0xfefefe) >> 1);
+			}
+		}
+	}
+
 	if (gGDI)
 	{
-		// In GDI mode we'll skip most of the processing..
 		getgdibitmap();
-	}
-	else
-	{
-		wc3video = 1;
-
-		for (i = 0; wc3video && i < gScreenWidth; i++)
-		{
-			// in wc3, only places where these two horizontal spans are
-			// black is when we're viewing video.
-			if (gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * 70 + i])
-				wc3video = 0;
-			if (gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (gScreenHeight - 70) + i])
-				wc3video = 0;
-		}
-
-		if (gScanDouble)
-		{
-			if (wc3video)
-			{
-				for (i = 71; i < gScreenHeight - 70; i+=2)
-					memcpy(gPrimarySurface->getSurfaceData() + gPrimarySurface->getPitch() * (i-1),
-					gPrimarySurface->getSurfaceData() + gPrimarySurface->getPitch() * i,
-					gScreenWidth);			
-			}
-		}
-
-
-		switch (gScreenBits)
-		{
-		case 8:		
-			if (!gHalfAndHalf || gScreenWidth > 320)
-			{
-				for (i = 0; i < gScreenHeight; i++)
-				{
-					for (j = 0; j < gScreenWidth; j++)
-					{
-						int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * i + j];
-						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
-					}
-				}
-			}
-			else
-			{
-				// half'n'half mode - scale up 2x with software, let
-				// hardware scale up to desktop resolution with bilinear
-				for (i = 0; i < gScreenHeight * 2; i++)
-				{
-					for (j = 0; j < gScreenWidth * 2; j++)
-					{
-						int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (i / 2) + (j / 2)];
-						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
-					}
-				}
-			}
-			break;
-		case 16:
-			{
-				// wc4 16bit mode is actually 15bit - 1:5:5:5
-				unsigned short * surf = (unsigned short *)gPrimarySurface->getSurfaceData();
-				int pitch = gPrimarySurface->getPitch() / 2;
-				for (i = 0; i < gScreenHeight; i++)
-				{
-					for (j = 0; j < gScreenWidth; j++)
-					{
-						int pix = surf[pitch * i + j];				
-						
-						int red   = (pix >> 10) & ((1 << 5) - 1);
-						int green = (pix >>  5) & ((1 << 5) - 1);
-						int blue  = (pix >>  0) & ((1 << 5) - 1);
-						
-						// fill bottom bits
-						red = (red << 3) | (red >> 2);
-						green = (green << 3) | (green >> 2);
-						blue = (blue << 3) | (blue >> 2);
-						
-
-						texdata[i*tex_w+j] = (blue << 16) | (green << 8) | red;
-					}
-				}
-			}
-			break;
-		case 24:
-			{
-				// the "24 bit" graphics mode in wc4 is actually 15 bits with
-				// 9 bits of padding!
-				char * surf = (char *)gPrimarySurface->getSurfaceData();
-				int pitch = gPrimarySurface->getPitch() / 3;
-				for (i = 0; i < gScreenHeight; i++)
-				{
-					for (j = 0; j < gScreenWidth; j++)
-					{
-						int pix = *(short*)(surf + (pitch * i + j) * 3);				
-						
-						int red   = (pix >> 10) & ((1 << 5) - 1);
-						int green = (pix >>  5) & ((1 << 5) - 1);
-						int blue  = (pix >>  0) & ((1 << 5) - 1);
-						
-						// fill bottom bits
-						red = (red << 3) | (red >> 2);
-						green = (green << 3) | (green >> 2);
-						blue = (blue << 3) | (blue >> 2);
-
-						texdata[i*tex_w+j] = (blue << 16) | (green << 8) | red;
-					}
-				}
-			}
-			break;
-		}
-
-		if (wc3video && gBlurWc3Video)
-		{
-			// The video blur is basically a 3x3 matrix
-			// which emphasizes the center a lot.
-			// Implemented in a lazy manner, directly
-			// to the same buffer - yes, I know..
-			// Doesn't matter much in practise.
-			for (i = 70; i < gScreenHeight - 70; i++)
-			{
-				for (j = 1; j < gScreenWidth - 1; j++)
-				{
-					int pix =
-						((texdata[i * tex_w + j         - 1] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j         + 1] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j - tex_w    ] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j + tex_w    ] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j - tex_w - 1] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j - tex_w + 1] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j + tex_w - 1] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j + tex_w + 1] & 0xf8f8f8) >> 3);
-					texdata[i * tex_w + j] = 
-						((texdata[i * tex_w + j] & 0xfefefe) >> 1) +
-						                   ((pix & 0xfefefe) >> 1);
-				}
-			}
-		}
 	}
 
 	// Logo is "watermarked" over the framebuffer.. so its size
@@ -534,97 +539,97 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 void init_gl()
 {	
-	// Only init once..
-	if (origfunc != NULL)
-		return;
-
-	// Get the application's window procedure..
-	origfunc = (WNDPROC)GetWindowLong(gHwnd, GWL_WNDPROC);
-	// ..and replace it with our own.
-	SetWindowLong(gHwnd, GWL_WNDPROC, (long)newwinproc);
-	
 	RECT r;
-	r.top = 0;
-	r.left = 0;
-	// lowest fallback: 640x480 window
-	r.bottom = 480;
-	r.right = 640;
-
-	// next up: work area for primary display
-	SystemParametersInfo(SPI_GETWORKAREA,0,&r,0);
-
-	// best: full screen
-	MONITORINFO mon;
-	mon.cbSize = sizeof(mon);
-
-	if (GetMonitorInfo(MonitorFromWindow(gHwnd,MONITOR_DEFAULTTOPRIMARY),&mon))
+	// Only init once..
+	if (!origfunc)
 	{
-		r = mon.rcMonitor;
-	}
-
-	gRealScreenWidth = r.right;
-	gRealScreenHeight = r.bottom;
-
-	gAllowResize = 1;
-	// Go full screen..
-	MoveWindow(gHwnd, 0, -480 * (1 - gAltWinPos), gRealScreenWidth, 
-		       gRealScreenHeight + 480 * (1 - gAltWinPos), 0);
-	// Set position just in case..
-	SetWindowPos(gHwnd, NULL, 0, -480 * (1 - gAltWinPos), 0, 0, SWP_NOSIZE);
-	gAllowResize = 0;
-
-    PIXELFORMATDESCRIPTOR pfd;
-    pfd.nSize=sizeof(PIXELFORMATDESCRIPTOR);                             // Size 
-    pfd.nVersion=1;                                                      // Version
-    pfd.dwFlags=PFD_DRAW_TO_WINDOW|PFD_SUPPORT_OPENGL|PFD_DOUBLEBUFFER;  // Selected flags
-    pfd.iPixelType=PFD_TYPE_RGBA;                                        // Pixelformat
-    pfd.cColorBits=16;                                                   // Pixel depth
-    pfd.cDepthBits=16;                                                   // Zbuffer depth
-    pfd.iLayerType=PFD_MAIN_PLANE;                                       // Place the pixelformat on the main plane
+		// Get the application's window procedure..
+		origfunc = (WNDPROC)GetWindowLong(gHwnd, GWL_WNDPROC);
+		// ..and replace it with our own.
+		SetWindowLong(gHwnd, GWL_WNDPROC, (long)newwinproc);
 	
-	HGLRC gOpenGLRC = NULL;
-	// this is a bit heavy-handed, but the delay dll loading
-	// does seem to require a bit of work on win7..
-	// (and delay-loading the opengl dll is required to work in xp)
-	// Oddly enough, doing LoadLibrary on opengl didn't work in xp.
-	do {
-		Sleep(50);
-		gWindowDC=GetDC(gHwnd);
-		int pf=ChoosePixelFormat(gWindowDC, &pfd);
-		SetPixelFormat(gWindowDC, pf, &pfd);
-		gOpenGLRC = wglCreateContext(gWindowDC);
-	} while (!gOpenGLRC);
+		r.top = 0;
+		r.left = 0;
+		// lowest fallback: 640x480 window
+		r.bottom = 480;
+		r.right = 640;
 
-	wglMakeCurrent(gWindowDC, gOpenGLRC);
-	char *glext = (char *)glGetString(GL_EXTENSIONS);
-	if(glext && strstr(glext, "WGL_EXT_swap_control"))
-	{
-		BOOL (APIENTRY *wglSwapIntervalEXT)(int) = (BOOL (APIENTRY *)(int))wglGetProcAddress("wglSwapIntervalEXT");
-		if(wglSwapIntervalEXT)
+		// next up: work area for primary display
+		SystemParametersInfo(SPI_GETWORKAREA,0,&r,0);
+
+		// best: full screen
+		MONITORINFO mon;
+		mon.cbSize = sizeof(mon);
+
+		if (GetMonitorInfo(MonitorFromWindow(gHwnd,MONITOR_DEFAULTTOPRIMARY),&mon))
 		{
-			if(gVsync)
+			r = mon.rcMonitor;
+		}
+
+		gRealScreenWidth = r.right;
+		gRealScreenHeight = r.bottom;
+
+		gAllowResize = 1;
+		// Go full screen..
+		MoveWindow(gHwnd, 0, -480 * (1 - gAltWinPos), gRealScreenWidth, 
+				   gRealScreenHeight + 480 * (1 - gAltWinPos), 0);
+		// Set position just in case..
+		SetWindowPos(gHwnd, NULL, 0, -480 * (1 - gAltWinPos), 0, 0, SWP_NOSIZE);
+		gAllowResize = 0;
+
+		PIXELFORMATDESCRIPTOR pfd;
+		pfd.nSize=sizeof(PIXELFORMATDESCRIPTOR);                             // Size 
+		pfd.nVersion=1;                                                      // Version
+		pfd.dwFlags=PFD_DRAW_TO_WINDOW|PFD_SUPPORT_OPENGL|PFD_DOUBLEBUFFER;  // Selected flags
+		pfd.iPixelType=PFD_TYPE_RGBA;                                        // Pixelformat
+		pfd.cColorBits=16;                                                   // Pixel depth
+		pfd.cDepthBits=16;                                                   // Zbuffer depth
+		pfd.iLayerType=PFD_MAIN_PLANE;                                       // Place the pixelformat on the main plane
+	
+		HGLRC gOpenGLRC = NULL;
+		// this is a bit heavy-handed, but the delay dll loading
+		// does seem to require a bit of work on win7..
+		// (and delay-loading the opengl dll is required to work in xp)
+		// Oddly enough, doing LoadLibrary on opengl didn't work in xp.
+		do {
+			Sleep(50);
+			gWindowDC=GetDC(gHwnd);
+			int pf=ChoosePixelFormat(gWindowDC, &pfd);
+			SetPixelFormat(gWindowDC, pf, &pfd);
+			gOpenGLRC = wglCreateContext(gWindowDC);
+		} while (!gOpenGLRC);
+
+		wglMakeCurrent(gWindowDC, gOpenGLRC);
+		char *glext = (char *)glGetString(GL_EXTENSIONS);
+		if(glext && strstr(glext, "WGL_EXT_swap_control"))
+		{
+			BOOL (APIENTRY *wglSwapIntervalEXT)(int) = (BOOL (APIENTRY *)(int))wglGetProcAddress("wglSwapIntervalEXT");
+			if(wglSwapIntervalEXT)
 			{
-				wglSwapIntervalEXT(1);
-			}
-			else
-			{
-				wglSwapIntervalEXT(0);
+				if(gVsync)
+				{
+					wglSwapIntervalEXT(1);
+				}
+				else
+				{
+					wglSwapIntervalEXT(0);
+				}
 			}
 		}
+
+
+		ShowWindow(gHwnd, SW_SHOW);
+		SetForegroundWindow(gHwnd);
+
+		// Create a timer so we'll get some events all the time
+		SetTimer(gHwnd, 1, 10, NULL);
 	}
-
-
-	ShowWindow(gHwnd, SW_SHOW);
-	SetForegroundWindow(gHwnd);
 
 	r.top = 0;
 	r.left = 0;
-	r.bottom = gScreenHeight;
-	r.right = gScreenWidth;
+	r.bottom = gScreenHeight+1;
+	r.right = gScreenWidth+1;
 	ClipCursor(&r);
-
-	// Create a timer so we'll get some events all the time
-	SetTimer(gHwnd, 1, 10, NULL);
 }
 
 BOOL APIENTRY DllMain( HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
@@ -713,8 +718,9 @@ HRESULT WINAPI DirectDrawCreateEx(GUID FAR * lpGuid, LPVOID  *lplpDD, REFIID  ii
 HRESULT WINAPI DirectDrawCreateClipper(DWORD dwFlags, LPDIRECTDRAWCLIPPER FAR *lplpDDClipper, IUnknown FAR *pUnkOuter)
 {
 	logf("Exported function DirectDrawCreateClipper");
-			
-	return (DDERR_UNSUPPORTED);
+	
+	*lplpDDClipper = new myIDDrawClipper();
+	return (DD_OK);
 }
 
 
