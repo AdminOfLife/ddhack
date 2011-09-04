@@ -102,36 +102,44 @@ HRESULT  __stdcall myIDDrawSurface7::AddOverlayDirtyRect(LPRECT a)
 
 HRESULT  __stdcall myIDDrawSurface7::Blt(LPRECT a,LPDIRECTDRAWSURFACE7 b, LPRECT c,DWORD d, LPDDBLTFX e)
 {
-	myIDDrawSurface7 *src = NULL;
-	if (b) src = (myIDDrawSurface7*)b;
-
 	if (a && c)
 		logf("myIDDrawSurface7::Blt([%d,%d,%d,%d],%08x,[%d,%d,%d,%d],%d,%08x)",
 			a->top,a->left,a->bottom,a->right,
 			b,
 			c->top,c->left,c->bottom,c->right,
 			d,
-			e->dwDDFX);
+			e ? e->dwDDFX : 0);
 	else
 	if (a)
 		logf("myIDDrawSurface7::Blt([%d,%d,%d,%d],%08x,[null],%d,%08x)",
 			a->top,a->left,a->bottom,a->right,
 			b,
 			d,
-			e->dwDDFX);
+			e ? e->dwDDFX : 0);
 	else
 	if (c)
 		logf("myIDDrawSurface7::Blt([null],%08x,[%d,%d,%d,%d],%d,%08x)",
 			b,
 			c->top,c->left,c->bottom,c->right,
 			d,
-			e->dwDDFX);
+			e ? e->dwDDFX : 0);
 	else
 		logf("myIDDrawSurface7::Blt([null],%08x,[null],%d,%08x)",
 			b,
 			d,
-			e->dwDDFX);
-	//Sorry, removed logging from here until we work out why AOE crashes here with it on....
+			e ? e->dwDDFX : 0);
+	
+	myIDDrawSurface7 *src = NULL;
+	if (b) src = (myIDDrawSurface7*)b;
+	int usingColorKey = d & DDBLT_KEYDEST || d & DDBLT_KEYSRC;
+	unsigned char colorKey = 0;
+	if (usingColorKey)
+	{
+		if (d & DDBLT_KEYDEST)
+			colorKey = (unsigned char) (e ? e->ddckDestColorkey.dwColorSpaceLowValue : mDestColorKey.dwColorSpaceLowValue);
+		else if (d & DDBLT_KEYSRC)
+			colorKey = (unsigned char) (e ? e->ddckSrcColorkey.dwColorSpaceLowValue : src->mSrcColorKey.dwColorSpaceLowValue);
+	}
 
 	if (b == NULL)
 	{
@@ -148,7 +156,7 @@ HRESULT  __stdcall myIDDrawSurface7::Blt(LPRECT a,LPDIRECTDRAWSURFACE7 b, LPRECT
 			int i, j;
 			for (i = c->top; i < c->bottom; i++)
 				for (j = c->left; j < c->right; j++)
-					mSurfaceData[(i + (480 - c->bottom)/2) * mPitch + j + 160] = src->mSurfaceData[i * src->mPitch + j];		
+					mSurfaceData[(i + (480 - c->bottom)/2) * mPitch + j + 160] = src->mSurfaceData[i * src->mPitch + j];
 		}
 		else
 		{
@@ -157,13 +165,15 @@ HRESULT  __stdcall myIDDrawSurface7::Blt(LPRECT a,LPDIRECTDRAWSURFACE7 b, LPRECT
 			{
 				for (i = 0; i < a->bottom - a->top; i++)
 					for (j = 0; j < a->right - a->left; j++)
-						mSurfaceData[(i + a->top) * mPitch + j + a->left] = src->mSurfaceData[(i / 2 + c->top) * src->mPitch + j / 2 + c->left];		
+						if (!usingColorKey || src->mSurfaceData[(i + c->top) * src->mPitch + j + c->left] != colorKey)
+							mSurfaceData[(i + a->top) * mPitch + j + a->left] = src->mSurfaceData[(i + c->top) * src->mPitch + j + c->left];
 			}
 			else
 			{
 				for (i = 0; i < mHeight; i++)
 					for (j = 0; j < mWidth; j++)
-						mSurfaceData[i * mPitch + j] = src->mSurfaceData[(i / 2) * src->mPitch + j / 2];		
+						if (!usingColorKey || src->mSurfaceData[i * src->mPitch + j] != colorKey)
+							mSurfaceData[i * mPitch + j] = src->mSurfaceData[i * src->mPitch + j];
 			}
 		}
 	}
@@ -185,7 +195,18 @@ HRESULT  __stdcall myIDDrawSurface7::BltBatch(LPDDBLTBATCH a, DWORD b, DWORD c)
 HRESULT  __stdcall myIDDrawSurface7::BltFast(DWORD a,DWORD b,LPDIRECTDRAWSURFACE7 c, LPRECT d,DWORD e)
 {
 	logf("myIDDrawSurface7::BltFast");
-	return DDERR_UNSUPPORTED;
+	myIDDrawSurface7 *src = (myIDDrawSurface7*)c;
+	int usingColorKey = e & DDBLT_KEYDEST || e & DDBLT_KEYSRC;
+	unsigned char colorKey = 0;
+	if (usingColorKey)
+		colorKey = (unsigned char) (e & DDBLT_KEYDEST ? mDestColorKey.dwColorSpaceHighValue : src->mSrcColorKey.dwColorSpaceHighValue);
+	
+	for (int i = 0; i < d->bottom - d->top; i++)
+		for (int j = 0; j < d->right - d->left; j++)
+			if (!usingColorKey || src->mSurfaceData[(i + d->top) * src->mPitch + j + d->left] != colorKey)
+				mSurfaceData[(i + b) * mPitch + j + a] = src->mSurfaceData[(i + d->top) * src->mPitch + j + d->left];	
+	
+	return DD_OK;
 }
 
 
@@ -258,7 +279,8 @@ HRESULT  __stdcall myIDDrawSurface7::GetAttachedSurface(LPDDSCAPS2 a, LPDIRECTDR
 HRESULT  __stdcall myIDDrawSurface7::GetBltStatus(DWORD a)
 {
 	logf("myIDDrawSurface7::GetBltStatus");
-	return DDERR_UNSUPPORTED;
+	// we're always ready for bitblts
+	return DD_OK;
 }
 
 
@@ -274,7 +296,8 @@ HRESULT  __stdcall myIDDrawSurface7::GetCaps(LPDDSCAPS2 a)
 HRESULT  __stdcall myIDDrawSurface7::GetClipper(LPDIRECTDRAWCLIPPER FAR* a)
 {
 	logf("myIDDrawSurface7::GetClipper");
-	return DDERR_UNSUPPORTED;
+	a = (LPDIRECTDRAWCLIPPER *) mClipper;
+	return DD_OK;
 }
 
 
@@ -282,7 +305,13 @@ HRESULT  __stdcall myIDDrawSurface7::GetClipper(LPDIRECTDRAWCLIPPER FAR* a)
 HRESULT  __stdcall myIDDrawSurface7::GetColorKey(DWORD a, LPDDCOLORKEY b)
 {
 	logf("myIDDrawSurface7::GetColorKey");
-	return DDERR_UNSUPPORTED;
+	if (a & DDCKEY_DESTBLT)
+		b = &mDestColorKey;
+	else if (a & DDCKEY_SRCBLT)
+		b = &mSrcColorKey;
+	else
+		return DDERR_UNSUPPORTED;
+	return DD_OK;
 }
 
 
@@ -290,7 +319,9 @@ HRESULT  __stdcall myIDDrawSurface7::GetColorKey(DWORD a, LPDDCOLORKEY b)
 HRESULT  __stdcall myIDDrawSurface7::GetDC(HDC FAR *a)
 {
 	logf("myIDDrawSurface7::GetDC");
-	return DDERR_UNSUPPORTED;
+	*a = GetDC2(gHwnd);
+	gGDI = 1;
+	return DD_OK;
 }
 
 
@@ -460,7 +491,7 @@ HRESULT  __stdcall myIDDrawSurface7::Lock(LPRECT a,LPDDSURFACEDESC2 b,DWORD aFla
 HRESULT  __stdcall myIDDrawSurface7::ReleaseDC(HDC a)
 {
 	logf("myIDDrawSurface7::ReleaseDC");
-	return DDERR_UNSUPPORTED;
+	return DD_OK;
 }
 
 
@@ -477,7 +508,8 @@ HRESULT  __stdcall myIDDrawSurface7::Restore()
 HRESULT  __stdcall myIDDrawSurface7::SetClipper(LPDIRECTDRAWCLIPPER a)
 {
 	logf("myIDDrawSurface7::SetClipper");
-	return DDERR_UNSUPPORTED;
+	mClipper = (myIDDrawClipper *) a;
+	return DD_OK;
 }
 
 
@@ -485,6 +517,12 @@ HRESULT  __stdcall myIDDrawSurface7::SetClipper(LPDIRECTDRAWCLIPPER a)
 HRESULT  __stdcall myIDDrawSurface7::SetColorKey(DWORD a, LPDDCOLORKEY b)
 {
 	logf("myIDDrawSurface7::SetColorKey");
+	if (a & DDCKEY_DESTBLT)
+		mDestColorKey = *b;
+	else if (a & DDCKEY_SRCBLT)
+		mSrcColorKey = *b;
+	else
+		return DDERR_UNSUPPORTED;
 	return DD_OK;
 }
 

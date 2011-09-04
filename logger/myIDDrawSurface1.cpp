@@ -73,7 +73,8 @@ HRESULT  __stdcall myIDDrawSurface1::AddOverlayDirtyRect(LPRECT a)
 
 HRESULT  __stdcall myIDDrawSurface1::Blt(LPRECT a,LPDIRECTDRAWSURFACE b, LPRECT c,DWORD d, LPDDBLTFX e)
 {
-	if (a && c)
+	logf(this, "myIDDrawSurface1::Blt");
+	/*if (a && c)
 		logf(this, "myIDDrawSurface1::Blt([%d,%d,%d,%d],%08x,[%d,%d,%d,%d],%d,%08x)",
 			a->top,a->left,a->bottom,a->right,
 			b,
@@ -98,7 +99,7 @@ HRESULT  __stdcall myIDDrawSurface1::Blt(LPRECT a,LPDIRECTDRAWSURFACE b, LPRECT 
 		logf(this, "myIDDrawSurface1::Blt([null],%08x,[null],%d,%08x)",
 			b,
 			d,
-			e->dwDDFX);
+			e->dwDDFX);*/
 	if (b) b = ((myIDDrawSurface1*)b)->m_pIDDrawSurface;
 	return m_pIDDrawSurface->Blt(a,b,c,d,e);
 }

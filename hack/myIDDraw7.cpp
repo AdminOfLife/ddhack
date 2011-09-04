@@ -1,30 +1,6 @@
 #include "StdAfx.h"
 #include <varargs.h>
 
-HINSTANCE gl_hOriginalDll = 0;
-
-void LoadOriginalDll(void)
-{
-    logf(0, "LoadOriginalDll.");
-	
-	char buffer[MAX_PATH];
-    
-    // Getting path to system dir and to d3d9.dll
-	::GetSystemDirectory(buffer,MAX_PATH);
-
-	// Append dll name
-	strcat(buffer,"\\ddraw.dll");
-	
-	if (!gl_hOriginalDll) gl_hOriginalDll = ::LoadLibrary(buffer);
-
-	// Debug
-	if (!gl_hOriginalDll)
-	{
-		logf(0, "Original ddraw.dll not loaded");
-		::ExitProcess(0); // exit the hard way
-	}
-}
-
 myIDDraw7::myIDDraw7()
 {
 	logf("myIDDraw7 Constructor");

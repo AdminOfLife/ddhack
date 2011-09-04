@@ -30,15 +30,15 @@ HRESULT __stdcall myIDDraw2::QueryInterface (REFIID a, LPVOID FAR * b)
 		return NOERROR;
 	}
 
-	if (a == IID_IDirectDraw7)
-	{
-		*b = new myIDDraw7();
-		return NOERROR;
-	}
-
 	if (a == IID_IDirectDraw)
 	{
 		*b = new myIDDraw1();
+		return NOERROR;
+	}
+
+	if (a == IID_IDirectDraw7)
+	{
+		*b = new myIDDraw7();
 		return NOERROR;
 	}
 	return DDERR_UNSUPPORTED;

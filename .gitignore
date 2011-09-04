@@ -5,3 +5,10 @@ hack/ddhack.vcxproj.user
 hack/ddhack.sdf
 hack/out
 hack/ddhack.suo
+logger/Debug
+logger/ddwrapper.opensdf
+logger/ddwrapper.sdf
+logger/ddwrapper.suo
+logger/ddwrapper.vcxproj.user
+logger/ipch
+logger/out
