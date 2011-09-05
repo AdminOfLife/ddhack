@@ -52,7 +52,7 @@ int gScreenHeight;
 int gScreenBits;
 int gRealScreenWidth;
 int gRealScreenHeight;
-unsigned int texdata[2048*2048*4];
+unsigned int texdata[2048*2048];
 WNDPROC origfunc = NULL;
 HDC gWindowDC;
 int gLastUpdate = -1;
@@ -71,9 +71,13 @@ int gVsync = 0;
 int temp[640*480];
 int xPos = 0;
 int yPos = 0;
+int tex_w = 0;
+int tex_h = 0;
+int focus = 1;
 int softCursor = 0;
 int gOffset = 0;
 int gMouseclipping = 0;
+int gClippingEnabled = 0;
 
 
 HWND (WINAPI *CreateWindowEx_fn)(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam) = CreateWindowEx;
@@ -155,8 +159,7 @@ void getgdibitmap()
 	{
 	  for (j = 0; j < 480; j++)
 	  {
-		  // should use tex_w, but we know it'll be 1024..
-		  texdata[j*1024+i] = 	  
+		  texdata[j*tex_w+i] = 	  
 			(temp[j*640+i] & 0x00ff00) |
 			(temp[j*640+i] >> 16) |
 			(temp[j*640+i] << 16);
@@ -179,7 +182,7 @@ void updatescreen()
 	if (firsttick == -1)
 	{
 		firsttick = tick;
-		memset(texdata, 0, sizeof(int) * 2048 * 1024);
+		memset(texdata, 0, sizeof(int) * 2048 * 2048);
 	}
 
 	// If we're not set up yet, or it's been less or equal than 10ms since
@@ -228,8 +231,8 @@ void updatescreen()
 
 	// texture size stuff probably should be global
 	// and calculated once per mode init..
-	int tex_w = 512;
-	int tex_h = 256;	
+	tex_w = 512;
+	tex_h = 256;	
 	int i, j;
 
 	if (gScreenWidth > 320 || gHalfAndHalf)
@@ -237,9 +240,9 @@ void updatescreen()
 		tex_w *= 2;
 		tex_h *= 2;
 	}
-	//np2
-	tex_w = (gScreenWidth);
-	tex_h = (gScreenHeight);
+	
+	tex_w = (gScreenWidth + 3) & ~(3);
+	tex_h = (gScreenHeight + 3) & ~(3);
 	
 	if (gGDI)
 	{
@@ -527,10 +530,27 @@ void updatescreen()
 	SwapBuffers(gWindowDC);
 }
 
+void setClipCursor()
+{
+	if (!gMouseclipping || !gClippingEnabled)
+	{
+		ClipCursor(NULL);
+		return;
+	}
+
+	POINT p = {0,0};
+	ClientToScreen(gHwnd, &p);
+	logf("setClipCursor: %d,%d", p.x, p.y);
+	RECT r;
+	r.left = p.x;
+	r.top = p.y;
+	r.right = p.x + gScreenWidth;
+	r.bottom = p.y + gScreenHeight;
+	ClipCursor(&r);
+}
 
 LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {	
-	static int focus = 1;
 	int tick = GetTickCount();
 	if (gLastUpdate == -1)
 	{
@@ -550,19 +570,16 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_KILLFOCUS:
 		{
-			//::ClipCursor(NULL);
+			focus = 0;
+			ClipCursor(NULL);
 		}
 		break;
 	case WM_SETFOCUS: 
 		{
-			/*if (gMouseclipping)
-			{
-				RECT r;
-				::GetWindowRect(hWnd, &r);
-				::ClipCursor(&r);
-			}*/
-			break;
+			focus = 1;
+			setClipCursor();
 		}
+		break;
 	case WM_LBUTTONDOWN:
 	case WM_LBUTTONUP:
 	case WM_RBUTTONDOWN:
@@ -577,8 +594,22 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		xPos = GET_X_LPARAM(lParam); 
 		yPos = GET_Y_LPARAM(lParam); 
 		break;
+	case WM_CHAR:
+		if (wParam == 26)
+		{
+			gMouseclipping ^= 1;
+			setClipCursor();
+		}
+		break;
 	case WM_WINDOWPOSCHANGING:
-
+	case WM_MOVE:
+	case WM_SIZE:
+		if (!gAllowResize)
+			return 0;
+		break;
+	case WM_SYSCOMMAND:
+		if (!gAllowResize && (wParam == SC_MOVE || wParam == SC_SIZE))
+			return 0;
 		break;
 	}
 
@@ -617,19 +648,6 @@ void init_gl()
 
 		gRealScreenWidth = r.right;
 		gRealScreenHeight = r.bottom;
-
-		gAllowResize = 1;
-		RECT rc = {0, 0, gScreenWidth, gScreenHeight};
-		DWORD style = GetWindowLong(gHwnd, GWL_STYLE);
-		AdjustWindowRect(&rc, style, false);
-		rc.left = (gRealScreenWidth - gScreenWidth)/2;
-		rc.right = rc.left + gScreenWidth;
-		rc.top = (gRealScreenHeight - gScreenHeight)/2;
-		rc.bottom = rc.top + gScreenHeight;
-		MoveWindow(gHwnd, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
-		// Set position just in case..
-		//SetWindowPos(gHwnd, NULL, 0, -480 * (1 - gAltWinPos), 0, 0, SWP_NOSIZE);
-		gAllowResize = 0;
 
 		PIXELFORMATDESCRIPTOR pfd;
 		pfd.nSize=sizeof(PIXELFORMATDESCRIPTOR);                             // Size 
@@ -676,19 +694,23 @@ void init_gl()
 		// Create a timer so we'll get some events all the time
 		SetTimer(gHwnd, 1, 10, NULL);
 	}
-	else
-	{
-		gAllowResize = 1;
-		RECT rc = {0, 0, gScreenWidth, gScreenHeight};
-		DWORD style = GetWindowLong(gHwnd, GWL_STYLE);
-		AdjustWindowRect(&rc, style, false);
-		rc.left = (gRealScreenWidth - gScreenWidth)/2;
-		rc.right = rc.left + gScreenWidth;
-		rc.top = (gRealScreenHeight - gScreenHeight)/2;
-		rc.bottom = rc.top + gScreenHeight;
-		MoveWindow(gHwnd, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
-		gAllowResize = 0;
-	}
+
+	gAllowResize = 1;
+	RECT rc = {0, 0, gScreenWidth, gScreenHeight};
+	DWORD style = GetWindowLong(gHwnd, GWL_STYLE);
+	DWORD exStyle = GetWindowLong(gHwnd, GWL_EXSTYLE);
+	AdjustWindowRectEx(&rc, style, false, exStyle);
+	int w = rc.right - rc.left;
+	int h = rc.bottom - rc.top;
+	rc.left = (gRealScreenWidth - gScreenWidth)/2;
+	rc.right = rc.left + w;
+	rc.top = (gRealScreenHeight - gScreenHeight)/2;
+	rc.bottom = rc.top + h;
+	MoveWindow(gHwnd, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
+	gAllowResize = 0;
+	
+	if (focus)
+		setClipCursor();
 }
 
 BOOL APIENTRY DllMain( HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
@@ -867,8 +889,8 @@ void InitInstance(HANDLE hModule)
 	//gAltWinPos=INI_READ_INT("Rendering","altwinpos",0);
 	//gIgnoreAspect=INI_READ_INT("Rendering","ignore_aspect_ratio",0);
 	//gVsync=INI_READ_INT("Rendering","vsync",0);
-	gOffset=INI_READ_INT("Rendering","yoffset",0);
-	gMouseclipping=INI_READ_INT("Rendering","mouseclipping",0);
+	//gOffset=INI_READ_INT("Rendering","yoffset",0);
+	gClippingEnabled=INI_READ_INT("Rendering","mouseclipping",0);
 	softCursor=INI_READ_INT("Rendering","softcursor",0);
 
 
