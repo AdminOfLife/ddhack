@@ -78,6 +78,7 @@ int softCursor = 0;
 int gOffset = 0;
 int gMouseclipping = 0;
 int gClippingEnabled = 0;
+int doResize = 0;
 
 
 HWND (WINAPI *CreateWindowEx_fn)(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam) = CreateWindowEx;
@@ -170,6 +171,43 @@ void getgdibitmap()
 	DeleteObject(tempbitmap);
 }
 
+void setClipCursor()
+{
+	if (!gMouseclipping || !gClippingEnabled)
+	{
+		ClipCursor(NULL);
+		return;
+	}
+
+	POINT p = {0,0};
+	ClientToScreen(gHwnd, &p);
+	logf("setClipCursor: %d,%d", p.x, p.y);
+	RECT r;
+	r.left = p.x;
+	r.top = p.y;
+	r.right = p.x + gScreenWidth;
+	r.bottom = p.y + gScreenHeight;
+	ClipCursor(&r);
+}
+
+
+void myResize()
+{
+	gAllowResize = 1;
+	RECT rc = {0, 0, gScreenWidth, gScreenHeight};
+	DWORD style = GetWindowLong(gHwnd, GWL_STYLE);
+	DWORD exStyle = GetWindowLong(gHwnd, GWL_EXSTYLE);
+	AdjustWindowRectEx(&rc, style, false, exStyle);
+	int w = rc.right - rc.left;
+	int h = rc.bottom - rc.top;
+	rc.left = (gRealScreenWidth - gScreenWidth)/2;
+	rc.right = rc.left + w;
+	rc.top = (gRealScreenHeight - gScreenHeight)/2;
+	rc.bottom = rc.top + h;
+	MoveWindow(gHwnd, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
+	gAllowResize = 0;
+}
+
 
 void updatescreen()
 {
@@ -177,6 +215,16 @@ void updatescreen()
 	static int firsttick = -1;
 
 	logf("updatescreen()");
+
+	if (doResize)
+	{
+		myResize();
+	
+		if (focus)
+			setClipCursor();
+
+		doResize = 0;
+	}
 
 	int tick = GetTickCount();
 	if (firsttick == -1)
@@ -530,25 +578,6 @@ void updatescreen()
 	SwapBuffers(gWindowDC);
 }
 
-void setClipCursor()
-{
-	if (!gMouseclipping || !gClippingEnabled)
-	{
-		ClipCursor(NULL);
-		return;
-	}
-
-	POINT p = {0,0};
-	ClientToScreen(gHwnd, &p);
-	logf("setClipCursor: %d,%d", p.x, p.y);
-	RECT r;
-	r.left = p.x;
-	r.top = p.y;
-	r.right = p.x + gScreenWidth;
-	r.bottom = p.y + gScreenHeight;
-	ClipCursor(&r);
-}
-
 LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {	
 	int tick = GetTickCount();
@@ -691,26 +720,15 @@ void init_gl()
 		ShowWindow(gHwnd, SW_SHOW);
 		SetForegroundWindow(gHwnd);
 
+		myResize();
+
 		// Create a timer so we'll get some events all the time
 		SetTimer(gHwnd, 1, 10, NULL);
 	}
-
-	gAllowResize = 1;
-	RECT rc = {0, 0, gScreenWidth, gScreenHeight};
-	DWORD style = GetWindowLong(gHwnd, GWL_STYLE);
-	DWORD exStyle = GetWindowLong(gHwnd, GWL_EXSTYLE);
-	AdjustWindowRectEx(&rc, style, false, exStyle);
-	int w = rc.right - rc.left;
-	int h = rc.bottom - rc.top;
-	rc.left = (gRealScreenWidth - gScreenWidth)/2;
-	rc.right = rc.left + w;
-	rc.top = (gRealScreenHeight - gScreenHeight)/2;
-	rc.bottom = rc.top + h;
-	MoveWindow(gHwnd, rc.left, rc.top, rc.right-rc.left, rc.bottom-rc.top, TRUE);
-	gAllowResize = 0;
-	
-	if (focus)
-		setClipCursor();
+	else
+	{
+		doResize = 1;
+	}
 }
 
 BOOL APIENTRY DllMain( HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
