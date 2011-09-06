@@ -12,3 +12,4 @@ logger/ddwrapper.suo
 logger/ddwrapper.vcxproj.user
 logger/ipch
 logger/out
+hack/ipch

@@ -131,15 +131,10 @@ HRESULT  __stdcall myIDDrawSurface7::Blt(LPRECT a,LPDIRECTDRAWSURFACE7 b, LPRECT
 	
 	myIDDrawSurface7 *src = NULL;
 	if (b) src = (myIDDrawSurface7*)b;
-	int usingColorKey = d & DDBLT_KEYDEST || d & DDBLT_KEYSRC;
+	int usingColorKey = d & DDBLT_KEYDEST || d & DDBLT_KEYSRC || d & DDBLT_ALPHADEST;
 	unsigned char colorKey = 0;
 	if (usingColorKey)
-	{
-		if (d & DDBLT_KEYDEST)
-			colorKey = (unsigned char) (e ? e->ddckDestColorkey.dwColorSpaceLowValue : mDestColorKey.dwColorSpaceLowValue);
-		else if (d & DDBLT_KEYSRC)
-			colorKey = (unsigned char) (e ? e->ddckSrcColorkey.dwColorSpaceLowValue : src->mSrcColorKey.dwColorSpaceLowValue);
-	}
+		colorKey = (unsigned char) (d & DDBLT_KEYDEST ? mDestColorKey.dwColorSpaceLowValue : src->mSrcColorKey.dwColorSpaceLowValue);
 
 	if (b == NULL)
 	{
@@ -196,10 +191,10 @@ HRESULT  __stdcall myIDDrawSurface7::BltFast(DWORD a,DWORD b,LPDIRECTDRAWSURFACE
 {
 	logf("myIDDrawSurface7::BltFast");
 	myIDDrawSurface7 *src = (myIDDrawSurface7*)c;
-	int usingColorKey = e & DDBLT_KEYDEST || e & DDBLT_KEYSRC;
+	int usingColorKey = e & DDBLT_KEYDEST || e & DDBLT_KEYSRC || e & DDBLT_ALPHADEST;
 	unsigned char colorKey = 0;
 	if (usingColorKey)
-		colorKey = (unsigned char) (e & DDBLT_KEYDEST ? mDestColorKey.dwColorSpaceHighValue : src->mSrcColorKey.dwColorSpaceHighValue);
+		colorKey = (unsigned char) (e & DDBLT_KEYDEST ? mDestColorKey.dwColorSpaceLowValue : src->mSrcColorKey.dwColorSpaceLowValue);
 	
 	for (int i = 0; i < d->bottom - d->top; i++)
 		for (int j = 0; j < d->right - d->left; j++)
