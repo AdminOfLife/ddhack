@@ -12,3 +12,6 @@ Bugs
 * When starting the game or changing the resolution in game, after a couple
   seconds the screen moves to the upper right corner on its own. This only
   seems to happen that one time though.
+* If you resize the game to a resolution too big for your desktop, the game
+  will be shifted off center in the window, cutting off the top 30 or so
+  pixels.
