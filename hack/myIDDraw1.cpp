@@ -105,10 +105,11 @@ HRESULT  __stdcall myIDDraw1::EnumDisplayModes(DWORD a, LPDDSURFACEDESC b, LPVOI
 	
 	// Send a bunch of modes, most modern systems should support all of these
 	
-	static int resolutions[21][2] = {
+	static int resolutions[22][2] = {
 		{640, 480},
 		{720, 480},
 		{720, 576},
+		{800, 600},
 		{1024, 768},
 		{1152, 864},
 		{1176, 664},

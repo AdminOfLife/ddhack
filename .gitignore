@@ -13,3 +13,4 @@ logger/ipch
 logger/ddwrapper.vcxproj.user
 logger/ddwrapper.sdf
 logger/ddwrapper.suo
+hack/ipch

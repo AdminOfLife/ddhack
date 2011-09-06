@@ -77,6 +77,6 @@ HRESULT  __stdcall myIDDrawClipper::SetClipList(LPRGNDATA a, DWORD b)
 HRESULT  __stdcall myIDDrawClipper::SetHWnd(DWORD a, HWND b)
 {
 	logf("myIDDrawClipper::SetHWnd");
-	memcpy(&mHwnd, &a, sizeof(mHwnd));
+	mHwnd = b;
 	return DD_OK;
 }
