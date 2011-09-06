@@ -78,6 +78,7 @@ int softCursor = 0;
 int gOffset = 0;
 int gMouseclipping = 0;
 int gClippingEnabled = 0;
+int gEarlyResize = 0;
 int doResize = 0;
 
 
@@ -678,6 +679,9 @@ void init_gl()
 		gRealScreenWidth = r.right;
 		gRealScreenHeight = r.bottom;
 
+		if (gEarlyResize)
+			myResize();
+
 		PIXELFORMATDESCRIPTOR pfd;
 		pfd.nSize=sizeof(PIXELFORMATDESCRIPTOR);                             // Size 
 		pfd.nVersion=1;                                                      // Version
@@ -720,15 +724,11 @@ void init_gl()
 		ShowWindow(gHwnd, SW_SHOW);
 		SetForegroundWindow(gHwnd);
 
-		myResize();
-
 		// Create a timer so we'll get some events all the time
 		SetTimer(gHwnd, 1, 10, NULL);
 	}
-	else
-	{
-		doResize = 1;
-	}
+
+	doResize = 1;
 }
 
 BOOL APIENTRY DllMain( HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
@@ -910,6 +910,7 @@ void InitInstance(HANDLE hModule)
 	//gOffset=INI_READ_INT("Rendering","yoffset",0);
 	gClippingEnabled=INI_READ_INT("Rendering","mouseclipping",0);
 	softCursor=INI_READ_INT("Rendering","softcursor",0);
+	gEarlyResize=INI_READ_INT("Rendering","earlyresize",0);
 
 
 	// Init some defaults..
