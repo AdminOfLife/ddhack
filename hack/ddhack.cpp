@@ -30,8 +30,13 @@
 #include "stdafx.h"
 #include <varargs.h>
 #include <windowsx.h>
+#include <GL/gl.h>
 #include "logo.h"
 #include "cursor.h"
+
+typedef void (* PFNGLACTIVETEXTUREPROC) (GLenum texture);
+
+PFNGLACTIVETEXTUREPROC glActiveTexture;  //Put this in a .h so that you can include the header in all your other .cpp
 
 //#define LOG_DLL_ATTACH
 
@@ -182,6 +187,8 @@ void updatescreen()
 {
 	int wc3video = 0;
 	static int firsttick = -1;
+	GLuint palette, palette_data, palette_final;
+	int texformat = 0;
 
 	logf("updatescreen()");
 
@@ -290,17 +297,20 @@ void updatescreen()
 		case 8:		
 			if (!gHalfAndHalf || gScreenWidth > 320)
 			{
-				for (i = 0; i < gScreenHeight; i++)
+				texformat = 2;
+				//memcpy(texdata, gPrimarySurface->getSurfaceData(), gScreenWidth*gScreenHeight);
+				/*for (i = 0; i < gScreenHeight; i++)
 				{
 					for (j = 0; j < gScreenWidth; j++)
 					{
 						int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * i + j];
 						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
 					}
-				}
+				}*/
 			}
 			else
 			{
+				texformat = 0;
 				// half'n'half mode - scale up 2x with software, let
 				// hardware scale up to desktop resolution with bilinear
 				for (i = 0; i < gScreenHeight * 2; i++)
@@ -316,7 +326,9 @@ void updatescreen()
 		case 16:
 			{
 				// wc4 16bit mode is actually 15bit - 1:5:5:5
-				unsigned short * surf = (unsigned short *)gPrimarySurface->getSurfaceData();
+				texformat = 1;
+				//memcpy(texdata, gPrimarySurface->getSurfaceData(), gScreenWidth*gScreenHeight*2);
+				/*unsigned short * surf = (unsigned short *)gPrimarySurface->getSurfaceData();
 				int pitch = gPrimarySurface->getPitch() / 2;
 				for (i = 0; i < gScreenHeight; i++)
 				{
@@ -336,13 +348,14 @@ void updatescreen()
 
 						texdata[i*tex_w+j] = (blue << 16) | (green << 8) | red;
 					}
-				}
+				}*/
 			}
 			break;
 		case 24:
 			{
 				// the "24 bit" graphics mode in wc4 is actually 15 bits with
 				// 9 bits of padding!
+				texformat = 2;
 				char * surf = (char *)gPrimarySurface->getSurfaceData();
 				int pitch = gPrimarySurface->getPitch() / 3;
 				for (i = 0; i < gScreenHeight; i++)
@@ -397,7 +410,7 @@ void updatescreen()
 
 	// Logo is "watermarked" over the framebuffer.. so its size
 	// depends on the resolution.
-	if (tick - firsttick < 2000 || gShowLogo)
+	/*if (tick - firsttick < 2000 || gShowLogo)
 	{
 		for (i = 1; i < 63; i++)
 		{
@@ -415,11 +428,11 @@ void updatescreen()
 				}
 			}
 		}
-	}
+	}*/
 
 	//getgdibitmap();
 
-	if (gSoftCursor && xPos >= 0 && yPos >= 0)
+	/*if (gSoftCursor && xPos >= 0 && yPos >= 0)
 	{
 		for (i = 0; i < 12 && xPos + i < tex_w; i++)
 		{
@@ -433,9 +446,27 @@ void updatescreen()
 				}
 			}
 		}
+	}*/
+	#define GL_BGRA 0x80E1
+	#define GL_UNSIGNED_SHORT_1_5_5_5_REV 0x8366
+	#define GL_TEXTURE0 0x84C0
+	#define GL_TEXTURE1 0x84C1
+	if (texformat == 2)
+	{
+		glActiveTexture(GL_TEXTURE0);
+		glGenTextures(1, &palette);
+		glBindTexture(GL_TEXTURE_1D, palette);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, gPrimarySurface->getCurrentPalette()->mPal);
+		glEnable(GL_TEXTURE_1D);
+		glActiveTexture(GL_TEXTURE1);
+		glGenTextures(1, &palette_data);
+		glBindTexture(GL_TEXTURE_1D, palette_data);
 	}
-	
     // upload texture
+	if (texformat == 0)
     glTexImage2D(GL_TEXTURE_2D,    // target
                  0,                // level
                  GL_RGB,           // internalformat
@@ -443,6 +474,26 @@ void updatescreen()
                  tex_h,            // height
                  0,                // border
                  GL_RGBA,          // format
+                 GL_UNSIGNED_BYTE, // type
+                 texdata);         // texels
+	else if (texformat == 1)
+    glTexImage2D(GL_TEXTURE_2D,    // target
+                 0,                // level
+                 GL_RGB5_A1,           // internalformat
+                 tex_w,            // width
+                 tex_h,            // height
+                 0,                // border
+                 GL_BGRA,          // format
+                 GL_UNSIGNED_SHORT_1_5_5_5_REV, // type
+                 texdata);         // texels
+	else if (texformat == 2)
+    glTexImage2D(GL_TEXTURE_2D,    // target
+                 0,                // level
+                 GL_INTENSITY8,           // internalformat
+                 tex_w,            // width
+                 tex_h,            // height
+                 0,                // border
+                 GL_LUMINANCE,          // format
                  GL_UNSIGNED_BYTE, // type
                  texdata);         // texels
     // render
@@ -457,8 +508,17 @@ void updatescreen()
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
 	    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     }
-
+	if (texformat != 2)
     glEnable(GL_TEXTURE_2D);
+	
+	if (texformat == 2)
+	{
+		glGenTextures(1, &palette_final);
+		glBindTexture(GL_TEXTURE_2D, palette_final);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, tex_w, tex_h, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+		glEnable(GL_TEXTURE_1D);
+		glGenTextures(1, &palette_data);
+	}
 
 	glShadeModel(GL_SMOOTH);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0);
@@ -702,6 +762,7 @@ void init_gl()
 			}
 		}
 
+		glActiveTexture = (PFNGLACTIVETEXTUREPROC) wglGetProcAddress("glActiveTexture");
 
 		ShowWindow(gHwnd, SW_SHOW);
 		SetForegroundWindow(gHwnd);
