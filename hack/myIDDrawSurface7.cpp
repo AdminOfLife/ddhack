@@ -103,7 +103,7 @@ HRESULT  __stdcall myIDDrawSurface7::AddOverlayDirtyRect(LPRECT a)
 HRESULT  __stdcall myIDDrawSurface7::Blt(LPRECT a,LPDIRECTDRAWSURFACE7 b, LPRECT c,DWORD d, LPDDBLTFX e)
 {
 	if (a && c)
-		logf("myIDDrawSurface7::Blt([%d,%d,%d,%d],%08x,[%d,%d,%d,%d],%d,%08x)",
+		logf("myIDDrawSurface7::Blt([%d,%d,%d,%d],%08x,[%d,%d,%d,%d],%08x,%08x)",
 			a->top,a->left,a->bottom,a->right,
 			b,
 			c->top,c->left,c->bottom,c->right,
@@ -111,24 +111,25 @@ HRESULT  __stdcall myIDDrawSurface7::Blt(LPRECT a,LPDIRECTDRAWSURFACE7 b, LPRECT
 			e ? e->dwDDFX : 0);
 	else
 	if (a)
-		logf("myIDDrawSurface7::Blt([%d,%d,%d,%d],%08x,[null],%d,%08x)",
+		logf("myIDDrawSurface7::Blt([%d,%d,%d,%d],%08x,[null],%08x,%08x)",
 			a->top,a->left,a->bottom,a->right,
 			b,
 			d,
 			e ? e->dwDDFX : 0);
 	else
 	if (c)
-		logf("myIDDrawSurface7::Blt([null],%08x,[%d,%d,%d,%d],%d,%08x)",
+		logf("myIDDrawSurface7::Blt([null],%08x,[%d,%d,%d,%d],%08x,%08x)",
 			b,
 			c->top,c->left,c->bottom,c->right,
 			d,
 			e ? e->dwDDFX : 0);
 	else
-		logf("myIDDrawSurface7::Blt([null],%08x,[null],%d,%08x)",
+		logf("myIDDrawSurface7::Blt([null],%08x,[null],%08x,%08x)",
 			b,
 			d,
 			e ? e->dwDDFX : 0);
 	
+	int i, j;
 	myIDDrawSurface7 *src = NULL;
 	if (b) src = (myIDDrawSurface7*)b;
 	int usingColorKey = d & DDBLT_KEYDEST || d & DDBLT_KEYSRC || d & DDBLT_ALPHADEST;
@@ -138,8 +139,12 @@ HRESULT  __stdcall myIDDrawSurface7::Blt(LPRECT a,LPDIRECTDRAWSURFACE7 b, LPRECT
 
 	if (b == NULL)
 	{
-		// no source - probably fill then; assuming clear request.
-		memset(mSurfaceData, 0, mHeight * mPitch);
+		if (a)
+			for (i = a->bottom; i < a->top; i++)
+				for (j = a->left; j < a->right; j++)
+					mSurfaceData[i*mPitch+j] = (d & DDBLT_COLORFILL ? e->dwFillColor : 0);
+		else
+			memset(mSurfaceData, (d & DDBLT_COLORFILL ? e->dwFillColor : 0), mHeight * mPitch);
 	}
 	else
 	{
@@ -148,14 +153,12 @@ HRESULT  __stdcall myIDDrawSurface7::Blt(LPRECT a,LPDIRECTDRAWSURFACE7 b, LPRECT
 
 		if (a && c && gWc3SmallVid)
 		{
-			int i, j;
 			for (i = c->top; i < c->bottom; i++)
 				for (j = c->left; j < c->right; j++)
 					mSurfaceData[(i + (480 - c->bottom)/2) * mPitch + j + 160] = src->mSurfaceData[i * src->mPitch + j];
 		}
 		else
 		{
-			int i, j;
 			if (a && c)
 			{
 				for (i = 0; i < a->bottom - a->top; i++)
@@ -189,7 +192,7 @@ HRESULT  __stdcall myIDDrawSurface7::BltBatch(LPDDBLTBATCH a, DWORD b, DWORD c)
 
 HRESULT  __stdcall myIDDrawSurface7::BltFast(DWORD a,DWORD b,LPDIRECTDRAWSURFACE7 c, LPRECT d,DWORD e)
 {
-	logf("myIDDrawSurface7::BltFast");
+	logf("myIDDrawSurface1::BltFast(%d,%d,%08x,[%d,%d,%d,%,d],%08x)",a,b,c,d->top,d->left,d->bottom,d->right,e);
 	myIDDrawSurface7 *src = (myIDDrawSurface7*)c;
 	int usingColorKey = e & DDBLT_KEYDEST || e & DDBLT_KEYSRC || e & DDBLT_ALPHADEST;
 	unsigned char colorKey = 0;
