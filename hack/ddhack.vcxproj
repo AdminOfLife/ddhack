@@ -133,6 +133,7 @@
     <None Include="ddhack.def" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="cursor.h" />
     <ClInclude Include="ddhack.h" />
     <ClInclude Include="logo.h" />
     <ClInclude Include="myIDDraw.h" />

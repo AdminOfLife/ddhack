@@ -29,7 +29,9 @@
  */
 #include "stdafx.h"
 #include <varargs.h>
+#include <windowsx.h>
 #include "logo.h"
+#include "cursor.h"
 
 //#define LOG_DLL_ATTACH
 
@@ -62,6 +64,9 @@ int gGDI = 0;
 int gVsync = 0;
 int tex_w = 0;
 int tex_h = 0;
+int xPos = 0;
+int yPos = 0;
+int gSoftCursor = 0;
 unsigned int temp[2048*2048];
 
 #pragma data_seg ()
@@ -357,6 +362,22 @@ void updatescreen()
 			}
 		}
 	}
+
+	if (gSoftCursor && xPos >= 0 && yPos >= 0)
+	{
+		for (i = 0; i < 12 && xPos + i < tex_w; i++)
+		{
+			for (j = 0; j < 19 && yPos + j < tex_h; j++)
+			{
+				unsigned int pixel = cursor[j*12+i];
+
+				if (pixel != 0xFF000000)
+				{
+					texdata[(yPos+j)*tex_w+xPos+i] = pixel;
+				}
+			}
+		}
+	}
 	
     // upload texture
     glTexImage2D(GL_TEXTURE_2D,    // target
@@ -522,8 +543,10 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			// fix the mouse cursor position..
 			if (!gAltWinPos)
 				lParam -= 480 << 16;
+			xPos = GET_X_LPARAM(lParam);
+			yPos = GET_Y_LPARAM(lParam);
+			break;
 		}
-		break;
 	case WM_WINDOWPOSCHANGING:
 		if (!gAllowResize)
 		{
@@ -537,7 +560,7 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		break;
 	}
 
-	// Pass control to the application..	
+	// Pass control to the application..
 	return origfunc(hWnd, uMsg, wParam, lParam);
 }
 
@@ -813,6 +836,7 @@ void InitInstance(HANDLE hModule)
 	gAltWinPos=INI_READ_INT("Rendering","altwinpos",0);
 	gIgnoreAspect=INI_READ_INT("Rendering","ignore_aspect_ratio",0);
 	gVsync=INI_READ_INT("Rendering","vsync",0);
+	gSoftCursor=INI_READ_INT("Rendering","softcursor",0);
 
 
 	// Init some defaults..
