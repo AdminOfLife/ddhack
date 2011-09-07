@@ -96,31 +96,85 @@ void logf(char *msg, ...)
 
 void getgdibitmap()
 {
-	int i, j;
 	HDC hDC = CreateCompatibleDC(gWindowDC);
 	HBITMAP tempbitmap = CreateCompatibleBitmap(gWindowDC,gScreenWidth,gScreenHeight);
-	memset(temp, 0, sizeof(int)*2048*2048);
+	memset(temp, 0xFF, sizeof(int)*2048*2048);
 	SelectObject(hDC, tempbitmap);
 	BitBlt(hDC,0,0,gScreenWidth,gScreenHeight,gWindowDC,0,0,SRCCOPY);
 
 	// assumption: 32bpp desktop mode
 	GetBitmapBits(tempbitmap,gScreenWidth*gScreenHeight*4,temp);	  
 
-	for (i = 0; i < gScreenWidth; i++)
+	/*for (i = 0; i < gScreenWidth; i++)
 	{
 		for (j = 0; j < gScreenHeight; j++)
 		{
 			if (temp[j*gScreenWidth+i] != 0)
-				texdata[j*tex_w+i] = 	  
-					(temp[j*gScreenWidth+i] & 0x00ff00) |
-					(temp[j*gScreenWidth+i] >> 16) |
-					(temp[j*gScreenWidth+i] << 16);
+				temp[j*gScreenWidth+i] |= 0xff000000;
+			if (!i)
+				temp[j] = 0x00ffffff;
 		}
-	}
-			
+	}*/
+	
 	DeleteDC(hDC);
 	DeleteObject(tempbitmap);
-	//SendMessage(gHwnd, WM_ERASEBKGND, 0, 0);
+	RECT r;
+	r.left = 0;
+	r.top = 0;
+	r.right = gScreenWidth;
+	r.bottom = gScreenHeight;
+	
+    glTexImage2D(GL_TEXTURE_2D,    // target
+                 0,                // level
+                 GL_RGBA,          // internalformat
+                 gScreenWidth,     // width
+                 gScreenHeight,    // height
+                 0,                // border
+                 GL_BGRA_EXT,      // format
+                 GL_UNSIGNED_BYTE, // type
+                 temp);         // texels
+	glBlendFunc (GL_SRC_COLOR, GL_ONE);
+	glEnable(GL_BLEND);
+
+    float u = (float)gScreenWidth / (float)gScreenWidth;
+    float v = (float)gScreenHeight / (float)gScreenHeight;
+    
+	// Next, we want to retain aspect ratio of 4/3, so we'll
+	// end up with black bars on the sides or top and bottom
+	// if the window size doesn't match.
+
+    float w = 1, h = 1;
+	float aspect = 4.0f / 3.0f;
+
+    w = (gRealScreenHeight * aspect) / gRealScreenWidth;
+    h = (gRealScreenWidth * (1 / aspect)) / gRealScreenHeight;
+
+    if (w > h) w = 1; else h = 1;
+
+	if (gIgnoreAspect)
+	{
+		w = (float)gScreenWidth / (float)gScreenWidth;
+		h = (float)gScreenHeight / (float)gScreenHeight;
+		// Do the actual rendering.
+		glBegin(GL_TRIANGLE_FAN);
+		glTexCoord2f(0,0);              glVertex2f(-1,  1);
+		glTexCoord2f(w,0);        glVertex2f( 1,  1);
+		glTexCoord2f(w,h);  glVertex2f( 1, -1); 
+		glTexCoord2f(0,h);        glVertex2f(-1, -1);
+		glEnd();
+	}
+	else
+	{
+		// Do the actual rendering.
+		glBegin(GL_TRIANGLE_FAN);
+		glTexCoord2f(0,0); glVertex2f( -w,  h);
+		glTexCoord2f(u,0); glVertex2f(  w,  h);
+		glTexCoord2f(u,v); glVertex2f(  w, -h); 
+		glTexCoord2f(0,v); glVertex2f( -w, -h);
+		glEnd();
+
+	}
+	::FillRect(gWindowDC, &r, (HBRUSH) GetStockObject(BLACK_BRUSH));
 }
 
 
@@ -203,12 +257,12 @@ void updatescreen()
 	if (gGDI)
 	{
 		// In GDI mode we'll skip most of the processing..
-		getgdibitmap();
+		//getgdibitmap();
 	}
 	else
 	{
 		wc3video = 1;
-		
+
 		for (i = 0; wc3video && i < gScreenWidth; i++)
 		{
 			// in wc3, only places where these two horizontal spans are
@@ -363,6 +417,8 @@ void updatescreen()
 		}
 	}
 
+	//getgdibitmap();
+
 	if (gSoftCursor && xPos >= 0 && yPos >= 0)
 	{
 		for (i = 0; i < 12 && xPos + i < tex_w; i++)
@@ -480,6 +536,8 @@ void updatescreen()
 		glEnd();
 
 	}
+
+	getgdibitmap();
 
 	SwapBuffers(gWindowDC);
 }

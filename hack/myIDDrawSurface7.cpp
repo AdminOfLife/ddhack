@@ -142,7 +142,7 @@ HRESULT  __stdcall myIDDrawSurface7::Blt(LPRECT a,LPDIRECTDRAWSURFACE7 b, LPRECT
 		if (a)
 			for (i = a->bottom; i < a->top; i++)
 				for (j = a->left; j < a->right; j++)
-					mSurfaceData[i*mPitch+j] = (d & DDBLT_COLORFILL ? e->dwFillColor : 0);
+					mSurfaceData[i*mPitch+j] = (d & DDBLT_COLORFILL ? (unsigned char) e->dwFillColor : 0);
 		else
 			memset(mSurfaceData, (d & DDBLT_COLORFILL ? e->dwFillColor : 0), mHeight * mPitch);
 	}
