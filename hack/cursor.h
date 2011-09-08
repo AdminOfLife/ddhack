@@ -1,6 +1,6 @@
-#define B 0x00000000,
-#define W 0x00FFFFFF,
-#define T 0xFF000000,
+#define B 0xFF000000,
+#define W 0xFFFFFFFF,
+#define T 0x00000000,
 
 static unsigned int cursor[] = {
 	B T T T T T T T T T T T
@@ -22,6 +22,7 @@ static unsigned int cursor[] = {
 	B B T T T T B W W B T T
 	T T T T T T B W W B T T
 	T T T T T T T B B T T T
+	T T T T T T T T T T T T
 };
 
 #undef B

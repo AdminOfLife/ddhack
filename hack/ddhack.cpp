@@ -30,13 +30,32 @@
 #include "stdafx.h"
 #include <varargs.h>
 #include <windowsx.h>
-#include <GL/gl.h>
+#include <gl/GL.h>
 #include "logo.h"
 #include "cursor.h"
 
-typedef void (* PFNGLACTIVETEXTUREPROC) (GLenum texture);
+typedef unsigned int GLhandleARB;
+typedef char GLcharARB;
 
-PFNGLACTIVETEXTUREPROC glActiveTexture;  //Put this in a .h so that you can include the header in all your other .cpp
+typedef void (WINAPI * PFNGLACTIVETEXTUREARBPROC) (GLenum texture);
+typedef GLhandleARB (WINAPI * PFNGLCREATESHADEROBJECTARBPROC) (GLenum shaderType);
+typedef void (WINAPI * PFNGLGENPROGRAMSARBPROC) (GLsizei, GLuint *);
+typedef void (WINAPI * PFNGLBINDPROGRAMARBPROC) (GLenum target, GLuint program);
+typedef void (WINAPI * PFNGLPROGRAMSTRINGARBPROC) (GLenum target, GLenum format, GLsizei len, const GLvoid *string);
+
+PFNGLACTIVETEXTUREARBPROC glActiveTextureARB;
+PFNGLCREATESHADEROBJECTARBPROC glCreateShaderObjectARB;
+PFNGLGENPROGRAMSARBPROC glGenProgramsARB;
+PFNGLBINDPROGRAMARBPROC glBindProgramARB;
+PFNGLPROGRAMSTRINGARBPROC glProgramStringARB;
+
+#define GL_BGRA 0x80E1
+#define GL_UNSIGNED_SHORT_1_5_5_5_REV 0x8366
+#define GL_TEXTURE0_ARB 0x84C0
+#define GL_TEXTURE1_ARB 0x84C1
+#define GL_FRAGMENT_PROGRAM_ARB 0x8804
+#define GL_PROGRAM_FORMAT_ASCII_ARB 0x8875
+#define GL_PROGRAM_ERROR_POSITION_ARB 0x864B
 
 //#define LOG_DLL_ATTACH
 
@@ -73,6 +92,7 @@ int xPos = 0;
 int yPos = 0;
 int gSoftCursor = 0;
 unsigned int temp[2048*2048];
+GLuint fragment_id;
 
 #pragma data_seg ()
 
@@ -187,7 +207,7 @@ void updatescreen()
 {
 	int wc3video = 0;
 	static int firsttick = -1;
-	GLuint palette, palette_data, palette_final;
+	GLuint palette = 0, palette_data = 0;
 	int texformat = 0;
 
 	logf("updatescreen()");
@@ -196,7 +216,7 @@ void updatescreen()
 	if (firsttick == -1)
 	{
 		firsttick = tick;
-		memset(texdata, 0, sizeof(int) * 2048 * 1024);
+		memset(texdata, 0, sizeof(int) * 2048 * 2048);
 	}
 
 	// If we're not set up yet, or it's been less or equal than 10ms since
@@ -432,38 +452,16 @@ void updatescreen()
 
 	//getgdibitmap();
 
-	/*if (gSoftCursor && xPos >= 0 && yPos >= 0)
-	{
-		for (i = 0; i < 12 && xPos + i < tex_w; i++)
-		{
-			for (j = 0; j < 19 && yPos + j < tex_h; j++)
-			{
-				unsigned int pixel = cursor[j*12+i];
-
-				if (pixel != 0xFF000000)
-				{
-					texdata[(yPos+j)*tex_w+xPos+i] = pixel;
-				}
-			}
-		}
-	}*/
-	#define GL_BGRA 0x80E1
-	#define GL_UNSIGNED_SHORT_1_5_5_5_REV 0x8366
-	#define GL_TEXTURE0 0x84C0
-	#define GL_TEXTURE1 0x84C1
 	if (texformat == 2)
 	{
-		glActiveTexture(GL_TEXTURE0);
 		glGenTextures(1, &palette);
 		glBindTexture(GL_TEXTURE_1D, palette);
+		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, gPrimarySurface->getCurrentPalette()->mPal);
 		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, gPrimarySurface->getCurrentPalette()->mPal);
 		glEnable(GL_TEXTURE_1D);
-		glActiveTexture(GL_TEXTURE1);
 		glGenTextures(1, &palette_data);
-		glBindTexture(GL_TEXTURE_1D, palette_data);
+		glBindTexture(GL_TEXTURE_2D, palette_data);
 	}
     // upload texture
 	if (texformat == 0)
@@ -489,16 +487,16 @@ void updatescreen()
 	else if (texformat == 2)
     glTexImage2D(GL_TEXTURE_2D,    // target
                  0,                // level
-                 GL_INTENSITY8,           // internalformat
+                 GL_LUMINANCE,           // internalformat
                  tex_w,            // width
                  tex_h,            // height
                  0,                // border
                  GL_LUMINANCE,          // format
                  GL_UNSIGNED_BYTE, // type
-                 texdata);         // texels
+                 gPrimarySurface->getSurfaceData());         // texels
     // render
 
-    if (gSmooth)
+    if (gSmooth && texformat != 2)
     {
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
 	    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
@@ -508,17 +506,8 @@ void updatescreen()
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
 	    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     }
-	if (texformat != 2)
-    glEnable(GL_TEXTURE_2D);
 	
-	if (texformat == 2)
-	{
-		glGenTextures(1, &palette_final);
-		glBindTexture(GL_TEXTURE_2D, palette_final);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, tex_w, tex_h, GL_RGBA, GL_UNSIGNED_BYTE, 0);
-		glEnable(GL_TEXTURE_1D);
-		glGenTextures(1, &palette_data);
-	}
+    glEnable(GL_TEXTURE_2D);
 
 	glShadeModel(GL_SMOOTH);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0);
@@ -572,6 +561,18 @@ void updatescreen()
         glColor3f(1.0f,1.0f,1.0f); 
 	}
 
+	if (texformat == 2)
+	{
+		glEnable(GL_FRAGMENT_PROGRAM_ARB);
+		glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, fragment_id);
+		glActiveTextureARB(GL_TEXTURE0_ARB);
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, palette_data);
+		glActiveTextureARB(GL_TEXTURE1_ARB);
+		glEnable(GL_TEXTURE_1D);
+		glBindTexture(GL_TEXTURE_1D, palette);
+	}
+
 	// Do the actual rendering.
 	if (gIgnoreAspect)
 	{
@@ -594,17 +595,45 @@ void updatescreen()
 		glTexCoord2f(u,v); glVertex2f(  w, -h); 
 		glTexCoord2f(0,v); glVertex2f( -w, -h);
 		glEnd();
-
 	}
 
-	getgdibitmap();
+	//getgdibitmap();
+	
+	/*if (gSoftCursor && xPos >= 0 && yPos >= 0)
+	{
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 12, 20, 0, GL_RGBA, GL_UNSIGNED_BYTE, cursor);
+		glEnable(GL_TEXTURE_2D);
+		if (gIgnoreAspect)
+		{
+			w = (float)gScreenWidth / (float)tex_w;
+			h = (float)gScreenHeight / (float)tex_h;
+			// Do the actual rendering.
+			glBegin(GL_TRIANGLE_FAN);
+			glTexCoord2f(0,0);              glVertex2f(-1,  1);
+			glTexCoord2f(w,0);        glVertex2f( 1,  1);
+			glTexCoord2f(w,h);  glVertex2f( 1, -1); 
+			glTexCoord2f(0,h);        glVertex2f(-1, -1);
+			glEnd();
+		}
+		else
+		{
+			// Do the actual rendering.
+			glBegin(GL_TRIANGLE_FAN);
+			glTexCoord2f(0,0); glVertex2f( -w,  h);
+			glTexCoord2f(u,0); glVertex2f(  w,  h);
+			glTexCoord2f(u,v); glVertex2f(  w, -h); 
+			glTexCoord2f(0,v); glVertex2f( -w, -h);
+			glEnd();
+
+		}
+	}*/
 
 	SwapBuffers(gWindowDC);
 }
 
 
 LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{	
+{
 	static int focus = 1;
 	int tick = GetTickCount();
 	if (gLastUpdate == -1)
@@ -762,7 +791,22 @@ void init_gl()
 			}
 		}
 
-		glActiveTexture = (PFNGLACTIVETEXTUREPROC) wglGetProcAddress("glActiveTexture");
+		glActiveTextureARB = (PFNGLACTIVETEXTUREARBPROC) wglGetProcAddress("glActiveTextureARB");
+		glCreateShaderObjectARB = (PFNGLCREATESHADEROBJECTARBPROC) wglGetProcAddress("glCreateShaderObjectARB");
+		glGenProgramsARB = (PFNGLGENPROGRAMSARBPROC) wglGetProcAddress("glGenProgramsARB");
+		glBindProgramARB = (PFNGLBINDPROGRAMARBPROC) wglGetProcAddress("glBindProgramARB");
+		glProgramStringARB = (PFNGLPROGRAMSTRINGARBPROC) wglGetProcAddress("glProgramStringARB");
+		
+		char *fragment_src = "!!ARBfp1.0\n"
+		"TEMP indexSample;\n"
+		"TEX indexSample, fragment.texcoord[0], texture[0], 2D;\n"
+		"TEX result.color, indexSample, texture[1], 1D;\n"
+		"END";
+		glEnable(GL_FRAGMENT_PROGRAM_ARB);
+		glGenProgramsARB(1, &fragment_id);
+		glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, fragment_id);
+		glProgramStringARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_FORMAT_ASCII_ARB, strlen(fragment_src), fragment_src);
+		glDisable(GL_FRAGMENT_PROGRAM_ARB);
 
 		ShowWindow(gHwnd, SW_SHOW);
 		SetForegroundWindow(gHwnd);
