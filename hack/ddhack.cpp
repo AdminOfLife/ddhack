@@ -98,7 +98,25 @@ GLuint fragment_id;
 
 void logf(char *msg, ...)
 {
-#ifdef _DEBUG
+#if 0
+	va_list argp;
+	FILE * f = fopen("ddraw.log","a");	
+	static int t = -1;
+	if (t == -1)
+		t = GetTickCount();
+	int tn = GetTickCount();
+	
+	fprintf(f,"(%08x) ", tn-t);
+	t = tn;
+	
+	va_start(argp, msg);
+	vfprintf(f, msg, argp);
+	va_end(argp);
+	
+	fprintf(f,"\n");
+
+	fclose(f);
+#elif defined(_DEBUG)
 	va_list argp;
 	static int t = -1;
 	char temp1[256];
@@ -265,21 +283,9 @@ void updatescreen()
 	
 	// texture size stuff probably should be global
 	// and calculated once per mode init..
-	tex_w = 512;
-	tex_h = 256;	
+	tex_w = gScreenWidth;
+	tex_h = gScreenHeight;	
 	int i, j;
-
-	if (gScreenWidth > 320 || gHalfAndHalf)
-	{
-		tex_w *= 2;
-		tex_h *= 2;
-	}
-
-	if (tex_w < gScreenWidth || tex_h < gScreenHeight)
-	{
-		tex_w = (gScreenWidth + 3) & ~(3);
-		tex_h = (gScreenHeight + 3) & ~(3);
-	}
 
 	if (gGDI)
 	{
@@ -314,68 +320,16 @@ void updatescreen()
 
 		switch (gScreenBits)
 		{
-		case 8:		
-			if (!gHalfAndHalf || gScreenWidth > 320)
-			{
-				texformat = 2;
-				//memcpy(texdata, gPrimarySurface->getSurfaceData(), gScreenWidth*gScreenHeight);
-				/*for (i = 0; i < gScreenHeight; i++)
-				{
-					for (j = 0; j < gScreenWidth; j++)
-					{
-						int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * i + j];
-						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
-					}
-				}*/
-			}
-			else
-			{
-				texformat = 0;
-				// half'n'half mode - scale up 2x with software, let
-				// hardware scale up to desktop resolution with bilinear
-				for (i = 0; i < gScreenHeight * 2; i++)
-				{
-					for (j = 0; j < gScreenWidth * 2; j++)
-					{
-						int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (i / 2) + (j / 2)];
-						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
-					}
-				}
-			}
+		case 8:
+			texformat = 2;
 			break;
 		case 16:
-			{
-				// wc4 16bit mode is actually 15bit - 1:5:5:5
-				texformat = 1;
-				//memcpy(texdata, gPrimarySurface->getSurfaceData(), gScreenWidth*gScreenHeight*2);
-				/*unsigned short * surf = (unsigned short *)gPrimarySurface->getSurfaceData();
-				int pitch = gPrimarySurface->getPitch() / 2;
-				for (i = 0; i < gScreenHeight; i++)
-				{
-					for (j = 0; j < gScreenWidth; j++)
-					{
-						int pix = surf[pitch * i + j];				
-							
-						int red   = (pix >> 10) & ((1 << 5) - 1);
-						int green = (pix >>  5) & ((1 << 5) - 1);
-						int blue  = (pix >>  0) & ((1 << 5) - 1);
-							
-						// fill bottom bits
-						red = (red << 3) | (red >> 2);
-						green = (green << 3) | (green >> 2);
-						blue = (blue << 3) | (blue >> 2);
-							
-
-						texdata[i*tex_w+j] = (blue << 16) | (green << 8) | red;
-					}
-				}*/
-			}
+			texformat = 1;
 			break;
 		case 24:
 			{
 				// the "24 bit" graphics mode in wc4 is actually 15 bits with
 				// 9 bits of padding!
-				texformat = 2;
 				char * surf = (char *)gPrimarySurface->getSurfaceData();
 				int pitch = gPrimarySurface->getPitch() / 3;
 				for (i = 0; i < gScreenHeight; i++)
@@ -398,33 +352,6 @@ void updatescreen()
 				}
 			}
 			break;
-		}
-
-		if (wc3video && gBlurWc3Video)
-		{
-			// The video blur is basically a 3x3 matrix
-			// which emphasizes the center a lot.
-			// Implemented in a lazy manner, directly
-			// to the same buffer - yes, I know..
-			// Doesn't matter much in practise.
-			for (i = 70; i < gScreenHeight - 70; i++)
-			{
-				for (j = 1; j < gScreenWidth - 1; j++)
-				{
-					int pix =
-						((texdata[i * tex_w + j         - 1] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j         + 1] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j - tex_w    ] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j + tex_w    ] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j - tex_w - 1] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j - tex_w + 1] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j + tex_w - 1] & 0xf8f8f8) >> 3) +
-						((texdata[i * tex_w + j + tex_w + 1] & 0xf8f8f8) >> 3);
-					texdata[i * tex_w + j] = 
-						((texdata[i * tex_w + j] & 0xfefefe) >> 1) +
-											((pix & 0xfefefe) >> 1);
-				}
-			}
 		}
 	}
 
@@ -483,7 +410,7 @@ void updatescreen()
                  0,                // border
                  GL_BGRA,          // format
                  GL_UNSIGNED_SHORT_1_5_5_5_REV, // type
-                 texdata);         // texels
+                 gPrimarySurface->getSurfaceData());         // texels
 	else if (texformat == 2)
     glTexImage2D(GL_TEXTURE_2D,    // target
                  0,                // level
@@ -518,13 +445,6 @@ void updatescreen()
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-
-	// In case we're in half'n'half mode, make sure the calculations go right..
-	if (gHalfAndHalf && gScreenWidth <= 320)
-	{
-		tex_w /= 2;
-		tex_h /= 2;
-	}
 
 	// Handle the fact that while our texture is a power of two,
 	// the area we're using isn't.
@@ -628,6 +548,8 @@ void updatescreen()
 		}
 	}*/
 
+	glDeleteTextures(1, &palette);
+	glDeleteTextures(1, &palette_data);
 	SwapBuffers(gWindowDC);
 }
 
