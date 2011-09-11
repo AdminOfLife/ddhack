@@ -284,7 +284,9 @@ HRESULT  __stdcall myIDDrawSurface1::GetBltStatus(DWORD a)
 HRESULT  __stdcall myIDDrawSurface1::GetCaps(LPDDSCAPS a)
 {
 	logf("myIDDrawSurface1::GetCaps");
-	return DDERR_UNSUPPORTED;
+	if (this == gPrimarySurface)
+		a->dwCaps |= DDSCAPS_PRIMARYSURFACE | DDSCAPS_VISIBLE;
+	return DD_OK;
 }
 
 
