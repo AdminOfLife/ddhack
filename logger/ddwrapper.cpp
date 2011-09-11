@@ -41,7 +41,7 @@ HINSTANCE           gl_hThisInstance;
 void logf(void * thisptr, char *msg, ...)
 {	
 	va_list argp;
-	FILE * f = fopen("\\ddraw.log","a");	
+	FILE * f = fopen("ddraw.log","a");	
 	static int t = -1;
 	if (t == -1)
 		t = GetTickCount();
