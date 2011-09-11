@@ -142,7 +142,7 @@ HRESULT  __stdcall myIDDrawSurface7::Blt(LPRECT a,LPDIRECTDRAWSURFACE7 b, LPRECT
 		if (a)
 			for (i = a->bottom; i < a->top; i++)
 				for (j = a->left; j < a->right; j++)
-					mSurfaceData[i*mPitch+j] = (d & DDBLT_COLORFILL ? e->dwFillColor : 0);
+					mSurfaceData[i*mPitch+j] = (d & DDBLT_COLORFILL ? (unsigned char) e->dwFillColor : 0);
 		else
 			memset(mSurfaceData, (d & DDBLT_COLORFILL ? e->dwFillColor : 0), mHeight * mPitch);
 	}
@@ -286,7 +286,9 @@ HRESULT  __stdcall myIDDrawSurface7::GetBltStatus(DWORD a)
 HRESULT  __stdcall myIDDrawSurface7::GetCaps(LPDDSCAPS2 a)
 {
 	logf("myIDDrawSurface7::GetCaps");
-	return DDERR_UNSUPPORTED;
+	if (this == gPrimarySurface)
+		a->dwCaps |= DDSCAPS_PRIMARYSURFACE | DDSCAPS_VISIBLE;
+	return DD_OK;
 }
 
 
@@ -318,6 +320,7 @@ HRESULT  __stdcall myIDDrawSurface7::GetDC(HDC FAR *a)
 {
 	logf("myIDDrawSurface7::GetDC");
 	*a = GetDC2(gHwnd);
+	gGDI = 1;
 	return DD_OK;
 }
 

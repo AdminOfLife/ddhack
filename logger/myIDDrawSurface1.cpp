@@ -178,8 +178,9 @@ HRESULT  __stdcall myIDDrawSurface1::GetBltStatus(DWORD a)
 
 HRESULT  __stdcall myIDDrawSurface1::GetCaps(LPDDSCAPS a)
 {
-	logf(this, "myIDDrawSurface1::GetCaps");
-	return m_pIDDrawSurface->GetCaps(a);
+	HRESULT r = m_pIDDrawSurface->GetCaps(a);
+	logf(this, "myIDDrawSurface1::GetCaps sets %08x, returns %d", *a, r);
+	return r;
 }
 
 

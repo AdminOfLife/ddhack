@@ -84,7 +84,8 @@ HRESULT  __stdcall myIDDrawPalette::SetEntries(DWORD a,DWORD b,DWORD c,LPPALETTE
 	unsigned int i, j;
 	char temp[256], temp2[32];
 	logf(this, "myIDDrawPalette::SetEntries(%d,%d,%d,%08x)",a,b,c,d);
-	j = 0;
+	// some games spam an error  dialog about corrupted stack with this logging enabled
+	/*j = 0;
 	temp[0] = 0;
 	for (i = b; i < c; i++)
 	{
@@ -97,7 +98,7 @@ HRESULT  __stdcall myIDDrawPalette::SetEntries(DWORD a,DWORD b,DWORD c,LPPALETTE
 			temp[0] = 0;
 			j = 0;
 		}
-	}
+	}*/
 	return m_pIDDrawPalette->SetEntries(a,b,c,d);
 }
 
