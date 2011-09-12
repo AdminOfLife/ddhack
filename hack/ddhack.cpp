@@ -34,28 +34,51 @@
 #include "logo.h"
 #include "cursor.h"
 
-typedef unsigned int GLhandleARB;
-typedef char GLcharARB;
+typedef __int64 GLint64EXT;
+typedef char GLchar;
 
-typedef void (WINAPI * PFNGLACTIVETEXTUREARBPROC) (GLenum texture);
-typedef GLhandleARB (WINAPI * PFNGLCREATESHADEROBJECTARBPROC) (GLenum shaderType);
-typedef void (WINAPI * PFNGLGENPROGRAMSARBPROC) (GLsizei, GLuint *);
-typedef void (WINAPI * PFNGLBINDPROGRAMARBPROC) (GLenum target, GLuint program);
-typedef void (WINAPI * PFNGLPROGRAMSTRINGARBPROC) (GLenum target, GLenum format, GLsizei len, const GLvoid *string);
+typedef void (WINAPI * PFNGLACTIVETEXTUREPROC) (GLenum texture);
+typedef GLuint (WINAPI * PFNGLCREATESHADERPROC) (GLenum shaderType);
+typedef void (WINAPI * PFNGLSHADERSOURCEPROC) (GLuint shaderObj, GLsizei count, const GLchar ** string, const GLint *length);
+typedef void (WINAPI * PFNGLCOMPILESHADERPROC) (GLuint shaderObj);
+typedef GLuint (WINAPI * PFNGLCREATEPROGRAMPROC) (void);
+typedef void (WINAPI * PFNGLATTACHSHADERPROC) (GLuint containerObj, GLuint obj);
+typedef void (WINAPI * PFNGLLINKPROGRAMPROC) (GLuint programObj);
+typedef void (WINAPI * PFNGLUSEPROGRAMPROC) (GLuint programObj);
+typedef void (WINAPI * PFNGLUNIFORM1IPROC) (GLint location, GLint v0);
+typedef void (WINAPI * PFNGLUNIFORM4FVPROC) (GLint location, GLsizei count, const GLfloat * value);
+typedef GLint (WINAPI * PFNGLGETUNIFORMLOCATIONPROC) (GLuint programObj, const GLchar* name);
+typedef void (WINAPI * PFNGLGETSHADERIVPROC) (GLuint obj, GLenum pname, GLint* params);
+typedef void (WINAPI * PFNGLGETSHADERINFOLOGPROC) (GLuint obj, GLsizei maxLength, GLsizei* length, GLchar *infoLog);
+typedef void (WINAPI * PFNGLMULTITEXCOORD2FPROC) (GLenum target, GLfloat s, GLfloat t);
+typedef void (WINAPI * PFNGLMULTITEXCOORD1FPROC) (GLenum target, GLfloat s);
 
-PFNGLACTIVETEXTUREARBPROC glActiveTextureARB;
-PFNGLCREATESHADEROBJECTARBPROC glCreateShaderObjectARB;
-PFNGLGENPROGRAMSARBPROC glGenProgramsARB;
-PFNGLBINDPROGRAMARBPROC glBindProgramARB;
-PFNGLPROGRAMSTRINGARBPROC glProgramStringARB;
+PFNGLACTIVETEXTUREPROC glActiveTexture;
+PFNGLCREATESHADERPROC glCreateShader;
+PFNGLSHADERSOURCEPROC glShaderSource;
+PFNGLCOMPILESHADERPROC glCompileShader;
+PFNGLCREATEPROGRAMPROC glCreateProgram;
+PFNGLATTACHSHADERPROC glAttachShader;
+PFNGLLINKPROGRAMPROC glLinkProgram;
+PFNGLUSEPROGRAMPROC glUseProgram;
+PFNGLUNIFORM1IPROC glUniform1i;
+PFNGLUNIFORM4FVPROC glUniform4fv;
+PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
+PFNGLGETSHADERIVPROC glGetShaderiv;
+PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog;
+PFNGLMULTITEXCOORD2FPROC glMultiTexCoord2f;
+PFNGLMULTITEXCOORD1FPROC glMultiTexCoord1f;
 
 #define GL_BGRA 0x80E1
 #define GL_UNSIGNED_SHORT_1_5_5_5_REV 0x8366
-#define GL_TEXTURE0_ARB 0x84C0
-#define GL_TEXTURE1_ARB 0x84C1
-#define GL_FRAGMENT_PROGRAM_ARB 0x8804
-#define GL_PROGRAM_FORMAT_ASCII_ARB 0x8875
-#define GL_PROGRAM_ERROR_POSITION_ARB 0x864B
+#define GL_VERTEX_SHADER 0x8B31
+#define GL_FRAGMENT_SHADER 0x8B30
+#define GL_COMPILE_STATUS 0x8B81
+#define GL_INFO_LOG_LENGTH 0x8B84
+#define GL_TEXTURE0 0x84C0
+#define GL_TEXTURE1 0x84C1
+#define GL_R3_G3_B2 0x2A10
+#define GL_OBJECT_LINK_STATUS_ARB 0x8B82
 
 //#define LOG_DLL_ATTACH
 
@@ -92,7 +115,8 @@ int xPos = 0;
 int yPos = 0;
 int gSoftCursor = 0;
 unsigned int temp[2048*2048];
-GLuint fragment_id;
+GLuint shader_id;
+GLfloat lastpalette[4];
 
 #pragma data_seg ()
 
@@ -100,7 +124,7 @@ void logf(char *msg, ...)
 {
 #if 0
 	va_list argp;
-	FILE * f = fopen("ddraw.log","a");	
+	FILE * f = fopen("ddhack.log","a");	
 	static int t = -1;
 	if (t == -1)
 		t = GetTickCount();
@@ -139,33 +163,38 @@ void logf(char *msg, ...)
 
 void getgdibitmap()
 {
-	HDC hDC = CreateCompatibleDC(gWindowDC);
-	HBITMAP tempbitmap = CreateCompatibleBitmap(gWindowDC,gScreenWidth,gScreenHeight);
-	memset(temp, 0xFF, sizeof(int)*2048*2048);
-	SelectObject(hDC, tempbitmap);
-	BitBlt(hDC,0,0,gScreenWidth,gScreenHeight,gWindowDC,0,0,SRCCOPY);
-
-	// assumption: 32bpp desktop mode
-	GetBitmapBits(tempbitmap,gScreenWidth*gScreenHeight*4,temp);	  
-
-	/*for (i = 0; i < gScreenWidth; i++)
+	if (gGDI)
 	{
-		for (j = 0; j < gScreenHeight; j++)
+		HDC hDC = CreateCompatibleDC(gWindowDC);
+		HBITMAP tempbitmap = CreateCompatibleBitmap(gWindowDC,gScreenWidth,gScreenHeight);
+		memset(temp, 0xFF, sizeof(int)*2048*2048);
+		SelectObject(hDC, tempbitmap);
+		BitBlt(hDC,0,0,gScreenWidth,gScreenHeight,gWindowDC,0,0,SRCCOPY);
+
+		// assumption: 32bpp desktop mode
+		GetBitmapBits(tempbitmap,gScreenWidth*gScreenHeight*4,temp);	  
+
+		/*for (i = 0; i < gScreenWidth; i++)
 		{
-			if (temp[j*gScreenWidth+i] != 0)
-				temp[j*gScreenWidth+i] |= 0xff000000;
-			if (!i)
-				temp[j] = 0x00ffffff;
-		}
-	}*/
+			for (j = 0; j < gScreenHeight; j++)
+			{
+				if (temp[j*gScreenWidth+i] != 0)
+					temp[j*gScreenWidth+i] |= 0xff000000;
+				if (!i)
+					temp[j] = 0x00ffffff;
+			}
+		}*/
 	
-	DeleteDC(hDC);
-	DeleteObject(tempbitmap);
-	RECT r;
-	r.left = 0;
-	r.top = 0;
-	r.right = gScreenWidth;
-	r.bottom = gScreenHeight;
+		DeleteDC(hDC);
+		DeleteObject(tempbitmap);
+		RECT r;
+		r.left = 0;
+		r.top = 0;
+		r.right = gScreenWidth;
+		r.bottom = gScreenHeight;
+		::FillRect(gWindowDC, &r, (HBRUSH) GetStockObject(BLACK_BRUSH));
+		gGDI = 0;
+	}
 	
     glTexImage2D(GL_TEXTURE_2D,    // target
                  0,                // level
@@ -215,9 +244,7 @@ void getgdibitmap()
 		glTexCoord2f(u,v); glVertex2f(  w, -h); 
 		glTexCoord2f(0,v); glVertex2f( -w, -h);
 		glEnd();
-
 	}
-	::FillRect(gWindowDC, &r, (HBRUSH) GetStockObject(BLACK_BRUSH));
 }
 
 
@@ -287,12 +314,12 @@ void updatescreen()
 	tex_h = gScreenHeight;	
 	int i, j;
 
-	if (gGDI)
+	//if (gGDI)
 	{
 		// In GDI mode we'll skip most of the processing..
 		//getgdibitmap();
 	}
-	else
+	//else
 	{
 		wc3video = 1;
 
@@ -381,12 +408,14 @@ void updatescreen()
 
 	if (texformat == 2)
 	{
+		glActiveTexture(GL_TEXTURE0);
 		glGenTextures(1, &palette);
 		glBindTexture(GL_TEXTURE_1D, palette);
 		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, gPrimarySurface->getCurrentPalette()->mPal);
 		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glEnable(GL_TEXTURE_1D);
+		glActiveTexture(GL_TEXTURE1);
 		glGenTextures(1, &palette_data);
 		glBindTexture(GL_TEXTURE_2D, palette_data);
 	}
@@ -445,6 +474,13 @@ void updatescreen()
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
+    
+	// The "old LCD" effect is created by rendering 
+	// with alpha blending
+
+	glClear(GL_COLOR_BUFFER_BIT);
+	glColor3f(1.0f,1.0f,1.0f);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	// Handle the fact that while our texture is a power of two,
 	// the area we're using isn't.
@@ -463,34 +499,27 @@ void updatescreen()
     h = (gRealScreenWidth * (1 / aspect)) / gRealScreenHeight;
 
     if (w > h) w = 1; else h = 1;
-    
-	// The "old LCD" effect is created by rendering 
-	// with alpha blending
-
-	if (gOldLCD)
-	{
-		glEnable(GL_BLEND);		
-		glColor4f(1.0f,1.0f,1.0f,1.5f / (gOldLCD + 1.0f)); 
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	}
-	else
-	{
-		glClear(GL_COLOR_BUFFER_BIT);
-		glDisable(GL_BLEND);
-        glColor3f(1.0f,1.0f,1.0f); 
-	}
 
 	if (texformat == 2)
 	{
-		glEnable(GL_FRAGMENT_PROGRAM_ARB);
-		glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, fragment_id);
-		glActiveTextureARB(GL_TEXTURE0_ARB);
-		glEnable(GL_TEXTURE_2D);
-		glBindTexture(GL_TEXTURE_2D, palette_data);
-		glActiveTextureARB(GL_TEXTURE1_ARB);
-		glEnable(GL_TEXTURE_1D);
-		glBindTexture(GL_TEXTURE_1D, palette);
+		static int firsttime = 1;
+		glUseProgram(shader_id);
+
+		GLint h0 = glGetUniformLocation(shader_id, "pal");
+		GLint h1 = glGetUniformLocation(shader_id, "tex");
+		GLint h2 = glGetUniformLocation(shader_id, "lastpalette");
+		lastpalette[0] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
+		lastpalette[1] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
+		lastpalette[2] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
+		lastpalette[3] = 1.0f;
+		glUniform4fv(h2, 1, lastpalette);
+		if (h0 == -1 || h1 == -1 || h2 == -1) ::ExitProcess(0);
+		if (firsttime)
+		{
+			glUniform1i(h0, 0);
+			glUniform1i(h1, 1);
+			firsttime = 0;
+		}
 	}
 
 	// Do the actual rendering.
@@ -514,9 +543,15 @@ void updatescreen()
 		glTexCoord2f(u,0); glVertex2f(  w,  h);
 		glTexCoord2f(u,v); glVertex2f(  w, -h); 
 		glTexCoord2f(0,v); glVertex2f( -w, -h);
+		/*
+		glMultiTexCoord1f(GL_TEXTURE0, 0); glMultiTexCoord2f(GL_TEXTURE1, 0,0); glVertex2f( -w,  h);
+		glMultiTexCoord1f(GL_TEXTURE0, 1); glMultiTexCoord2f(GL_TEXTURE1, u,0); glVertex2f(  w,  h);
+		glMultiTexCoord1f(GL_TEXTURE0, 1); glMultiTexCoord2f(GL_TEXTURE1, u,v); glVertex2f(  w, -h); 
+		glMultiTexCoord1f(GL_TEXTURE0, 0); glMultiTexCoord2f(GL_TEXTURE1, 0,v); glVertex2f( -w, -h);
+		*/
 		glEnd();
 	}
-
+	//glUseProgramObjectARB(0);
 	//getgdibitmap();
 	
 	/*if (gSoftCursor && xPos >= 0 && yPos >= 0)
@@ -712,23 +747,72 @@ void init_gl()
 				}
 			}
 		}
-
-		glActiveTextureARB = (PFNGLACTIVETEXTUREARBPROC) wglGetProcAddress("glActiveTextureARB");
-		glCreateShaderObjectARB = (PFNGLCREATESHADEROBJECTARBPROC) wglGetProcAddress("glCreateShaderObjectARB");
-		glGenProgramsARB = (PFNGLGENPROGRAMSARBPROC) wglGetProcAddress("glGenProgramsARB");
-		glBindProgramARB = (PFNGLBINDPROGRAMARBPROC) wglGetProcAddress("glBindProgramARB");
-		glProgramStringARB = (PFNGLPROGRAMSTRINGARBPROC) wglGetProcAddress("glProgramStringARB");
 		
-		char *fragment_src = "!!ARBfp1.0\n"
-		"TEMP indexSample;\n"
-		"TEX indexSample, fragment.texcoord[0], texture[0], 2D;\n"
-		"TEX result.color, indexSample, texture[1], 1D;\n"
-		"END";
-		glEnable(GL_FRAGMENT_PROGRAM_ARB);
-		glGenProgramsARB(1, &fragment_id);
-		glBindProgramARB(GL_FRAGMENT_PROGRAM_ARB, fragment_id);
-		glProgramStringARB(GL_FRAGMENT_PROGRAM_ARB, GL_PROGRAM_FORMAT_ASCII_ARB, strlen(fragment_src), fragment_src);
-		glDisable(GL_FRAGMENT_PROGRAM_ARB);
+		glActiveTexture = (PFNGLACTIVETEXTUREPROC) wglGetProcAddress("glActiveTexture");
+		glCreateShader = (PFNGLCREATESHADERPROC) wglGetProcAddress("glCreateShader");
+		glShaderSource = (PFNGLSHADERSOURCEPROC) wglGetProcAddress("glShaderSource");
+		glCompileShader = (PFNGLCOMPILESHADERPROC) wglGetProcAddress("glCompileShader");
+		glCreateProgram = (PFNGLCREATEPROGRAMPROC) wglGetProcAddress("glCreateProgram");
+		glAttachShader = (PFNGLATTACHSHADERPROC) wglGetProcAddress("glAttachShader");
+		glLinkProgram = (PFNGLLINKPROGRAMPROC) wglGetProcAddress("glLinkProgram");
+		glUseProgram = (PFNGLUSEPROGRAMPROC) wglGetProcAddress("glUseProgram");
+		glUniform1i = (PFNGLUNIFORM1IPROC) wglGetProcAddress("glUniform1i");
+		glUniform4fv = (PFNGLUNIFORM4FVPROC) wglGetProcAddress("glUniform4fv");
+		glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC) wglGetProcAddress("glGetUniformLocation");
+		glGetShaderiv = (PFNGLGETSHADERIVPROC) wglGetProcAddress("glGetShaderiv");
+		glGetShaderInfoLog = (PFNGLGETSHADERINFOLOGPROC) wglGetProcAddress("glGetShaderInfoLog");
+		glMultiTexCoord2f = (PFNGLMULTITEXCOORD2FPROC) wglGetProcAddress("glMultiTexCoord2f");
+		glMultiTexCoord1f = (PFNGLMULTITEXCOORD1FPROC) wglGetProcAddress("glMultiTexCoord1f");
+
+		logf("glActiveTexture: %08x", glActiveTexture);
+		logf("glCreateShader: %08x", glCreateShader);
+		logf("glShaderSource: %08x", glShaderSource);
+		logf("glCompileShader: %08x", glCompileShader);
+		logf("glCreateProgram: %08x", glCreateProgram);
+		logf("glAttachShader: %08x", glAttachShader);
+		logf("glLinkProgram: %08x", glLinkProgram);
+		logf("glUseProgram: %08x", glUseProgram);
+		logf("glUniform1i: %08x", glUniform1i);
+		logf("glUniform4fv: %08x", glUniform4fv);
+		logf("glGetUniformLocation: %08x", glGetUniformLocation);
+		logf("glGetShaderiv: %08x", glGetShaderiv);
+		logf("glGetShaderInfoLog: %08x", glGetShaderInfoLog);
+		logf("glMultiTexCoord2f: %08x", glMultiTexCoord2f);
+		logf("glMultiTexCoord1f: %08x", glMultiTexCoord1f);
+
+		GLuint fragment_shader;
+		int compiled;
+		const GLchar *fragment_shader_src = "uniform sampler1D pal;\n"
+		"uniform sampler2D tex;\n"
+		"uniform vec4 lastpalette;\n"
+		"void main()\n"
+		"{\n"
+		"float pixel = texture2D(tex, gl_TexCoord[0].xy).r;\n"
+		"if (pixel == 1.0) {\n"
+		"gl_FragColor = lastpalette;\n"
+		"} else {\n"
+		"gl_FragColor = texture1D(pal, pixel);\n"
+		"}\n"
+		"}";
+		fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+		glShaderSource(fragment_shader, 1, &fragment_shader_src, 0);
+		glCompileShader(fragment_shader);
+		glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compiled);
+		if (!compiled)
+		{
+			glGetShaderiv(fragment_shader, GL_INFO_LOG_LENGTH, &compiled);
+			if (compiled > 0)
+			{
+				char *errlog = new char[compiled];
+				glGetShaderInfoLog(fragment_shader, compiled, 0, errlog);
+				MessageBox(gHwnd, errlog, "Shader Error", MB_OK | MB_ICONERROR);
+				delete[] errlog;
+			}
+		}
+		shader_id = glCreateProgram();
+		//glAttachShader(shader_id, vertex_shader);
+		glAttachShader(shader_id, fragment_shader);
+		glLinkProgram(shader_id);
 
 		ShowWindow(gHwnd, SW_SHOW);
 		SetForegroundWindow(gHwnd);
