@@ -30,14 +30,51 @@
 #include "stdafx.h"
 #include <varargs.h>
 #include <windowsx.h>
-
-//#pragma comment(lib, "detoured.lib")
-//#pragma comment(lib, "detours.lib")
-//#pragma comment(lib, "User32.lib")
-
 #include <detours/detours.h>
 #include "logo.h"
 #include "cursor.h"
+
+typedef __int64 GLint64EXT;
+typedef char GLchar;
+
+typedef void (WINAPI * PFNGLACTIVETEXTUREPROC) (GLenum texture);
+typedef GLuint (WINAPI * PFNGLCREATESHADERPROC) (GLenum shaderType);
+typedef void (WINAPI * PFNGLSHADERSOURCEPROC) (GLuint shaderObj, GLsizei count, const GLchar ** string, const GLint *length);
+typedef void (WINAPI * PFNGLCOMPILESHADERPROC) (GLuint shaderObj);
+typedef GLuint (WINAPI * PFNGLCREATEPROGRAMPROC) (void);
+typedef void (WINAPI * PFNGLATTACHSHADERPROC) (GLuint containerObj, GLuint obj);
+typedef void (WINAPI * PFNGLLINKPROGRAMPROC) (GLuint programObj);
+typedef void (WINAPI * PFNGLUSEPROGRAMPROC) (GLuint programObj);
+typedef void (WINAPI * PFNGLUNIFORM1IPROC) (GLint location, GLint v0);
+typedef void (WINAPI * PFNGLUNIFORM4FVPROC) (GLint location, GLsizei count, const GLfloat * value);
+typedef GLint (WINAPI * PFNGLGETUNIFORMLOCATIONPROC) (GLuint programObj, const GLchar* name);
+typedef void (WINAPI * PFNGLGETSHADERIVPROC) (GLuint obj, GLenum pname, GLint* params);
+typedef void (WINAPI * PFNGLGETSHADERINFOLOGPROC) (GLuint obj, GLsizei maxLength, GLsizei* length, GLchar *infoLog);
+
+PFNGLACTIVETEXTUREPROC glActiveTexture;
+PFNGLCREATESHADERPROC glCreateShader;
+PFNGLSHADERSOURCEPROC glShaderSource;
+PFNGLCOMPILESHADERPROC glCompileShader;
+PFNGLCREATEPROGRAMPROC glCreateProgram;
+PFNGLATTACHSHADERPROC glAttachShader;
+PFNGLLINKPROGRAMPROC glLinkProgram;
+PFNGLUSEPROGRAMPROC glUseProgram;
+PFNGLUNIFORM1IPROC glUniform1i;
+PFNGLUNIFORM4FVPROC glUniform4fv;
+PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
+PFNGLGETSHADERIVPROC glGetShaderiv;
+PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog;
+
+#define GL_BGRA 0x80E1
+#define GL_UNSIGNED_SHORT_1_5_5_5_REV 0x8366
+#define GL_VERTEX_SHADER 0x8B31
+#define GL_FRAGMENT_SHADER 0x8B30
+#define GL_COMPILE_STATUS 0x8B81
+#define GL_INFO_LOG_LENGTH 0x8B84
+#define GL_TEXTURE0 0x84C0
+#define GL_TEXTURE1 0x84C1
+#define GL_R3_G3_B2 0x2A10
+#define GL_OBJECT_LINK_STATUS_ARB 0x8B82
 
 //#define LOG_DLL_ATTACH
 
@@ -80,6 +117,9 @@ int gMouseclipping = 0;
 int gClippingEnabled = 0;
 int gEarlyResize = 0;
 int doResize = 0;
+int gNoShaders = 0;
+GLuint shader_id;
+GLfloat lastpalette[4];
 
 
 HWND (WINAPI *CreateWindowEx_fn)(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam) = CreateWindowEx;
@@ -214,6 +254,8 @@ void updatescreen()
 {
 	int wc3video = 0;
 	static int firsttick = -1;
+	GLuint palette = 0, palette_data = 0;
+	int texformat = 0;
 
 	logf("updatescreen()");
 
@@ -293,7 +335,7 @@ void updatescreen()
 	tex_w = (gScreenWidth + 3) & ~(3);
 	tex_h = (gScreenHeight + 3) & ~(3);
 	
-	if (gGDI)
+	if (/*gGDI*/0)
 	{
 		// In GDI mode we'll skip most of the processing..
 		getgdibitmap();
@@ -326,61 +368,45 @@ void updatescreen()
 
 		switch (gScreenBits)
 		{
-		case 8:		
-			if (!gHalfAndHalf || gScreenWidth > 320)
+		case 8:
+			if (gNoShaders)
 			{
-				myIDDrawPalette *pal = gPrimarySurface->getCurrentPalette();
-				unsigned char *surface = gPrimarySurface->getSurfaceData();
-				int pitch = gPrimarySurface->getPitch();
-				#pragma omp parallel for
-				for (i = 0; i < gScreenHeight; i++)
+				if (!gHalfAndHalf || gScreenWidth > 320)
 				{
-					for (j = 0; j < gScreenWidth; j++)
+					myIDDrawPalette *pal = gPrimarySurface->getCurrentPalette();
+					unsigned char *surface = gPrimarySurface->getSurfaceData();
+					int pitch = gPrimarySurface->getPitch();
+					#pragma omp parallel for
+					for (i = 0; i < gScreenHeight; i++)
 					{
-						int pix = surface[pitch * i + j];
-						texdata[i*tex_w+j] = *(int*)&(pal->mPal[pix]);
+						for (j = 0; j < gScreenWidth; j++)
+						{
+							int pix = surface[pitch * i + j];
+							texdata[i*tex_w+j] = *(int*)&(pal->mPal[pix]);
+						}
+					}
+				}
+				else
+				{
+					// half'n'half mode - scale up 2x with software, let
+					// hardware scale up to desktop resolution with bilinear
+					for (i = 0; i < gScreenHeight * 2; i++)
+					{
+						for (j = 0; j < gScreenWidth * 2; j++)
+						{
+							int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (i / 2) + (j / 2)];
+							texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
+						}
 					}
 				}
 			}
 			else
 			{
-				// half'n'half mode - scale up 2x with software, let
-				// hardware scale up to desktop resolution with bilinear
-				for (i = 0; i < gScreenHeight * 2; i++)
-				{
-					for (j = 0; j < gScreenWidth * 2; j++)
-					{
-						int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (i / 2) + (j / 2)];
-						texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
-					}
-				}
+				texformat = 2;
 			}
 			break;
 		case 16:
-			{
-				// wc4 16bit mode is actually 15bit - 1:5:5:5
-				unsigned short * surf = (unsigned short *)gPrimarySurface->getSurfaceData();
-				int pitch = gPrimarySurface->getPitch() / 2;
-				for (i = 0; i < gScreenHeight; i++)
-				{
-					for (j = 0; j < gScreenWidth; j++)
-					{
-						int pix = surf[pitch * i + j];				
-						
-						int red   = (pix >> 10) & ((1 << 5) - 1);
-						int green = (pix >>  5) & ((1 << 5) - 1);
-						int blue  = (pix >>  0) & ((1 << 5) - 1);
-						
-						// fill bottom bits
-						red = (red << 3) | (red >> 2);
-						green = (green << 3) | (green >> 2);
-						blue = (blue << 3) | (blue >> 2);
-						
-
-						texdata[i*tex_w+j] = (blue << 16) | (green << 8) | red;
-					}
-				}
-			}
+			texformat = 1;
 			break;
 		case 24:
 			{
@@ -410,7 +436,7 @@ void updatescreen()
 			break;
 		}
 
-		if (wc3video && gBlurWc3Video)
+		/*if (wc3video && gBlurWc3Video)
 		{
 			// The video blur is basically a 3x3 matrix
 			// which emphasizes the center a lot.
@@ -435,12 +461,12 @@ void updatescreen()
 						                   ((pix & 0xfefefe) >> 1);
 				}
 			}
-		}
+		}*/
 	}
 
 	// Logo is "watermarked" over the framebuffer.. so its size
 	// depends on the resolution.
-	if (tick - firsttick < 2000 || gShowLogo)
+	/*if (tick - firsttick < 2000 || gShowLogo)
 	{
 		for (i = 1; i < 63; i++)
 		{
@@ -458,25 +484,23 @@ void updatescreen()
 				}
 			}
 		}
-	}
+	}*/
 
-	if (softCursor && xPos >= 0 && yPos >= 0)
+	if (texformat == 2)
 	{
-		for (i = 0; i < 12 && xPos + i < tex_w; i++)
-		{
-			for (j = 0; j < 19 && yPos + j < tex_h; j++)
-			{
-				unsigned int pixel = cursor[j*12+i];
-				
-				if (pixel != 0xFF000000)
-				{
-					texdata[(yPos+j)*tex_w+xPos+i] = pixel;
-				}
-			}
-		}
+		glActiveTexture(GL_TEXTURE0);
+		glGenTextures(1, &palette);
+		glBindTexture(GL_TEXTURE_1D, palette);
+		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, gPrimarySurface->getCurrentPalette()->mPal);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glEnable(GL_TEXTURE_1D);
+		glActiveTexture(GL_TEXTURE1);
+		glGenTextures(1, &palette_data);
+		glBindTexture(GL_TEXTURE_2D, palette_data);
 	}
-
     // upload texture
+	if (texformat == 0)
     glTexImage2D(GL_TEXTURE_2D,    // target
                  0,                // level
                  GL_RGB,           // internalformat
@@ -486,9 +510,29 @@ void updatescreen()
                  GL_RGBA,          // format
                  GL_UNSIGNED_BYTE, // type
                  texdata);         // texels
+	else if (texformat == 1)
+    glTexImage2D(GL_TEXTURE_2D,    // target
+                 0,                // level
+                 GL_RGB5_A1,           // internalformat
+                 tex_w,            // width
+                 tex_h,            // height
+                 0,                // border
+                 GL_BGRA,          // format
+                 GL_UNSIGNED_SHORT_1_5_5_5_REV, // type
+                 gPrimarySurface->getSurfaceData());         // texels
+	else if (texformat == 2)
+    glTexImage2D(GL_TEXTURE_2D,    // target
+                 0,                // level
+                 GL_LUMINANCE,           // internalformat
+                 tex_w,            // width
+                 tex_h,            // height
+                 0,                // border
+                 GL_LUMINANCE,          // format
+                 GL_UNSIGNED_BYTE, // type
+                 gPrimarySurface->getSurfaceData());         // texels
     // render
 
-    if (gSmooth)
+    if (gSmooth && texformat != 2)
     {
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
 	    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
@@ -498,7 +542,7 @@ void updatescreen()
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
 	    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     }
-
+	
     glEnable(GL_TEXTURE_2D);
 
 	glShadeModel(GL_SMOOTH);
@@ -510,60 +554,70 @@ void updatescreen()
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
+    
+	// The "old LCD" effect is created by rendering 
+	// with alpha blending
 
-	// In case we're in half'n'half mode, make sure the calculations go right..
-	if (gHalfAndHalf && gScreenWidth <= 320)
-	{
-		tex_w /= 2;
-		tex_h /= 2;
-	}
+	glClear(GL_COLOR_BUFFER_BIT);
+	glColor3f(1.0f,1.0f,1.0f);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	// Handle the fact that while our texture is a power of two,
 	// the area we're using isn't.
 
-    float u = (float)gScreenWidth / (float)tex_w;
+    /*float u = (float)gScreenWidth / (float)tex_w;
     float v = (float)gScreenHeight / (float)tex_h;
     
 	// Next, we want to retain aspect ratio of 4/3, so we'll
 	// end up with black bars on the sides or top and bottom
 	// if the window size doesn't match.
 
-    /*float w = 1, h = 1;
+    float w = 1, h = 1;
 	float aspect = 4.0f / 3.0f;
 
     w = (gRealScreenHeight * aspect) / gRealScreenWidth;
     h = (gRealScreenWidth * (1 / aspect)) / gRealScreenHeight;
 
     if (w > h) w = 1; else h = 1;*/
-    
-	// The "old LCD" effect is created by rendering 
-	// with alpha blending
+	float u = (float)gScreenWidth / (float)tex_w;
+    float v = (float)gScreenHeight / (float)tex_h;
+	float w = 1.0, h = 1.0;
 
-	if (gOldLCD)
+	if (texformat == 2)
 	{
-		glEnable(GL_BLEND);		
-		glColor4f(1.0f,1.0f,1.0f,1.5f / (gOldLCD + 1.0f)); 
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		static int firsttime = 1;
+		glUseProgram(shader_id);
 
-	}
-	else
-	{
-		glClear(GL_COLOR_BUFFER_BIT);
-		glDisable(GL_BLEND);
-        glColor3f(1.0f,1.0f,1.0f); 
+		GLint h0 = glGetUniformLocation(shader_id, "pal");
+		GLint h1 = glGetUniformLocation(shader_id, "tex");
+		GLint h2 = glGetUniformLocation(shader_id, "lastpalette");
+		lastpalette[0] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
+		lastpalette[1] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
+		lastpalette[2] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
+		lastpalette[3] = 1.0f;
+		glUniform4fv(h2, 1, lastpalette);
+		if (h0 == -1 || h1 == -1 || h2 == -1) ::ExitProcess(0);
+		if (firsttime)
+		{
+			glUniform1i(h0, 0);
+			glUniform1i(h1, 1);
+			firsttime = 0;
+		}
 	}
 
 	// Do the actual rendering.
-	//if (gIgnoreAspect)
-	//{
+	if (gIgnoreAspect)
+	{
+		w = (float)gScreenWidth / (float)tex_w;
+		h = (float)gScreenHeight / (float)tex_h;
 		// Do the actual rendering.
 		glBegin(GL_TRIANGLE_FAN);
 		glTexCoord2f(0,0);              glVertex2f(-1,  1);
-		glTexCoord2f(u,0);        glVertex2f( 1,  1);
-		glTexCoord2f(u,v);  glVertex2f( 1, -1); 
-		glTexCoord2f(0,v);        glVertex2f(-1, -1);
+		glTexCoord2f(w,0);        glVertex2f( 1,  1);
+		glTexCoord2f(w,h);  glVertex2f( 1, -1); 
+		glTexCoord2f(0,h);        glVertex2f(-1, -1);
 		glEnd();
-	/*}
+	}
 	else
 	{
 		// Do the actual rendering.
@@ -573,9 +627,41 @@ void updatescreen()
 		glTexCoord2f(u,v); glVertex2f(  w, -h); 
 		glTexCoord2f(0,v); glVertex2f( -w, -h);
 		glEnd();
+	}
+	//glUseProgramObjectARB(0);
+	//getgdibitmap();
+	
+	/*if (gSoftCursor && xPos >= 0 && yPos >= 0)
+	{
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 12, 20, 0, GL_RGBA, GL_UNSIGNED_BYTE, cursor);
+		glEnable(GL_TEXTURE_2D);
+		if (gIgnoreAspect)
+		{
+			w = (float)gScreenWidth / (float)tex_w;
+			h = (float)gScreenHeight / (float)tex_h;
+			// Do the actual rendering.
+			glBegin(GL_TRIANGLE_FAN);
+			glTexCoord2f(0,0);              glVertex2f(-1,  1);
+			glTexCoord2f(w,0);        glVertex2f( 1,  1);
+			glTexCoord2f(w,h);  glVertex2f( 1, -1); 
+			glTexCoord2f(0,h);        glVertex2f(-1, -1);
+			glEnd();
+		}
+		else
+		{
+			// Do the actual rendering.
+			glBegin(GL_TRIANGLE_FAN);
+			glTexCoord2f(0,0); glVertex2f( -w,  h);
+			glTexCoord2f(u,0); glVertex2f(  w,  h);
+			glTexCoord2f(u,v); glVertex2f(  w, -h); 
+			glTexCoord2f(0,v); glVertex2f( -w, -h);
+			glEnd();
 
+		}
 	}*/
 
+	glDeleteTextures(1, &palette);
+	glDeleteTextures(1, &palette_data);
 	SwapBuffers(gWindowDC);
 }
 
@@ -718,6 +804,81 @@ void init_gl()
 				{
 					wglSwapIntervalEXT(0);
 				}
+			}
+		}
+		
+		glActiveTexture = (PFNGLACTIVETEXTUREPROC) wglGetProcAddress("glActiveTexture");
+		glCreateShader = (PFNGLCREATESHADERPROC) wglGetProcAddress("glCreateShader");
+		glShaderSource = (PFNGLSHADERSOURCEPROC) wglGetProcAddress("glShaderSource");
+		glCompileShader = (PFNGLCOMPILESHADERPROC) wglGetProcAddress("glCompileShader");
+		glCreateProgram = (PFNGLCREATEPROGRAMPROC) wglGetProcAddress("glCreateProgram");
+		glAttachShader = (PFNGLATTACHSHADERPROC) wglGetProcAddress("glAttachShader");
+		glLinkProgram = (PFNGLLINKPROGRAMPROC) wglGetProcAddress("glLinkProgram");
+		glUseProgram = (PFNGLUSEPROGRAMPROC) wglGetProcAddress("glUseProgram");
+		glUniform1i = (PFNGLUNIFORM1IPROC) wglGetProcAddress("glUniform1i");
+		glUniform4fv = (PFNGLUNIFORM4FVPROC) wglGetProcAddress("glUniform4fv");
+		glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC) wglGetProcAddress("glGetUniformLocation");
+		glGetShaderiv = (PFNGLGETSHADERIVPROC) wglGetProcAddress("glGetShaderiv");
+		glGetShaderInfoLog = (PFNGLGETSHADERINFOLOGPROC) wglGetProcAddress("glGetShaderInfoLog");
+
+		logf("glActiveTexture: %08x", glActiveTexture);
+		logf("glCreateShader: %08x", glCreateShader);
+		logf("glShaderSource: %08x", glShaderSource);
+		logf("glCompileShader: %08x", glCompileShader);
+		logf("glCreateProgram: %08x", glCreateProgram);
+		logf("glAttachShader: %08x", glAttachShader);
+		logf("glLinkProgram: %08x", glLinkProgram);
+		logf("glUseProgram: %08x", glUseProgram);
+		logf("glUniform1i: %08x", glUniform1i);
+		logf("glUniform4fv: %08x", glUniform4fv);
+		logf("glGetUniformLocation: %08x", glGetUniformLocation);
+		logf("glGetShaderiv: %08x", glGetShaderiv);
+		logf("glGetShaderInfoLog: %08x", glGetShaderInfoLog);
+
+		if (glActiveTexture == 0 || glCreateShader == 0 || glShaderSource == 0 || glCompileShader == 0 ||
+			glCreateProgram == 0 || glAttachShader == 0 || glLinkProgram == 0 || glUseProgram == 0 ||
+			glUniform1i == 0 || glUniform4fv == 0 || glGetUniformLocation == 0 || glGetShaderiv == 0 ||
+			glGetShaderInfoLog == 0)
+		{
+			gNoShaders = 1;
+		}
+		else
+		{
+			GLuint fragment_shader;
+			int compiled;
+			const GLchar *fragment_shader_src = "uniform sampler1D pal;\n"
+			"uniform sampler2D tex;\n"
+			"uniform vec4 lastpalette;\n"
+			"void main()\n"
+			"{\n"
+			"float pixel = texture2D(tex, gl_TexCoord[0].xy).r;\n"
+			"if (pixel == 1.0) {\n"
+			"gl_FragColor = lastpalette;\n"
+			"} else {\n"
+			"gl_FragColor = texture1D(pal, pixel);\n"
+			"}\n"
+			"}";
+			fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+			glShaderSource(fragment_shader, 1, &fragment_shader_src, 0);
+			glCompileShader(fragment_shader);
+			glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compiled);
+			if (!compiled)
+			{
+				glGetShaderiv(fragment_shader, GL_INFO_LOG_LENGTH, &compiled);
+				if (compiled > 0)
+				{
+					char *errlog = new char[compiled];
+					glGetShaderInfoLog(fragment_shader, compiled, 0, errlog);
+					MessageBox(gHwnd, errlog, "Shader Error", MB_OK | MB_ICONERROR);
+					delete[] errlog;
+				}
+				gNoShaders = 1;
+			}
+			else
+			{
+				shader_id = glCreateProgram();
+				glAttachShader(shader_id, fragment_shader);
+				glLinkProgram(shader_id);
 			}
 		}
 
