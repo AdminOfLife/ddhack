@@ -1,8 +1,8 @@
-#define B 0xFF000000,
-#define W 0xFFFFFFFF,
-#define T 0x00000000,
+#define B 0x00, 0x00, 0x00, 0xFF,
+#define W 0xFF, 0xFF, 0xFF, 0xFF,
+#define T 0x00, 0x00, 0x00, 0x00,
 
-static unsigned int cursor[] = {
+static unsigned char cursor[] = {
 	B T T T T T T T T T T T
 	B B T T T T T T T T T T
 	B W B T T T T T T T T T

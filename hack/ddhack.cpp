@@ -46,12 +46,11 @@ typedef void (WINAPI * PFNGLATTACHSHADERPROC) (GLuint containerObj, GLuint obj);
 typedef void (WINAPI * PFNGLLINKPROGRAMPROC) (GLuint programObj);
 typedef void (WINAPI * PFNGLUSEPROGRAMPROC) (GLuint programObj);
 typedef void (WINAPI * PFNGLUNIFORM1IPROC) (GLint location, GLint v0);
+typedef void (WINAPI * PFNGLUNIFORM2FVPROC) (GLint location, GLsizei count, const GLfloat * value);
 typedef void (WINAPI * PFNGLUNIFORM4FVPROC) (GLint location, GLsizei count, const GLfloat * value);
 typedef GLint (WINAPI * PFNGLGETUNIFORMLOCATIONPROC) (GLuint programObj, const GLchar* name);
 typedef void (WINAPI * PFNGLGETSHADERIVPROC) (GLuint obj, GLenum pname, GLint* params);
 typedef void (WINAPI * PFNGLGETSHADERINFOLOGPROC) (GLuint obj, GLsizei maxLength, GLsizei* length, GLchar *infoLog);
-typedef void (WINAPI * PFNGLMULTITEXCOORD2FPROC) (GLenum target, GLfloat s, GLfloat t);
-typedef void (WINAPI * PFNGLMULTITEXCOORD1FPROC) (GLenum target, GLfloat s);
 
 PFNGLACTIVETEXTUREPROC glActiveTexture;
 PFNGLCREATESHADERPROC glCreateShader;
@@ -62,12 +61,11 @@ PFNGLATTACHSHADERPROC glAttachShader;
 PFNGLLINKPROGRAMPROC glLinkProgram;
 PFNGLUSEPROGRAMPROC glUseProgram;
 PFNGLUNIFORM1IPROC glUniform1i;
+PFNGLUNIFORM2FVPROC glUniform2fv;
 PFNGLUNIFORM4FVPROC glUniform4fv;
 PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
 PFNGLGETSHADERIVPROC glGetShaderiv;
 PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog;
-PFNGLMULTITEXCOORD2FPROC glMultiTexCoord2f;
-PFNGLMULTITEXCOORD1FPROC glMultiTexCoord1f;
 
 #define GL_BGRA 0x80E1
 #define GL_UNSIGNED_SHORT_1_5_5_5_REV 0x8366
@@ -114,9 +112,11 @@ int tex_h = 0;
 int xPos = 0;
 int yPos = 0;
 int gSoftCursor = 0;
+int gCursorHidden = 0;
+int gNoShaders = 0;
 unsigned int temp[2048*2048];
 GLuint shader_id;
-GLfloat lastpalette[4];
+GLuint cursor_tex;
 
 #pragma data_seg ()
 
@@ -348,7 +348,40 @@ void updatescreen()
 		switch (gScreenBits)
 		{
 		case 8:
-			texformat = 2;
+			if (gNoShaders)
+			{
+				if (!gHalfAndHalf || gScreenWidth > 320)
+				{
+					myIDDrawPalette *pal = gPrimarySurface->getCurrentPalette();
+					unsigned char *surface = gPrimarySurface->getSurfaceData();
+					int pitch = gPrimarySurface->getPitch();
+					for (i = 0; i < gScreenHeight; i++)
+					{
+						for (j = 0; j < gScreenWidth; j++)
+						{
+							int pix = surface[pitch * i + j];
+							texdata[i*tex_w+j] = *(int*)&(pal->mPal[pix]);
+						}
+					}
+				}
+				else
+				{
+					// half'n'half mode - scale up 2x with software, let
+					// hardware scale up to desktop resolution with bilinear
+					for (i = 0; i < gScreenHeight * 2; i++)
+					{
+						for (j = 0; j < gScreenWidth * 2; j++)
+						{
+							int pix = gPrimarySurface->getSurfaceData()[gPrimarySurface->getPitch() * (i / 2) + (j / 2)];
+							texdata[i*tex_w+j] = *(int*)&(gPrimarySurface->getCurrentPalette()->mPal[pix]);
+						}
+					}
+				}
+			}
+			else
+			{
+				texformat = 2;
+			}
 			break;
 		case 16:
 			texformat = 1;
@@ -463,6 +496,9 @@ void updatescreen()
 	    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     }
 	
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP);
+	
     glEnable(GL_TEXTURE_2D);
 
 	glShadeModel(GL_SMOOTH);
@@ -493,7 +529,7 @@ void updatescreen()
 	// if the window size doesn't match.
 
     float w = 1, h = 1;
-	float aspect = 4.0f / 3.0f;
+	float aspect = (float) gScreenWidth / gScreenHeight;
 
     w = (gRealScreenHeight * aspect) / gRealScreenWidth;
     h = (gRealScreenWidth * (1 / aspect)) / gRealScreenHeight;
@@ -508,12 +544,18 @@ void updatescreen()
 		GLint h0 = glGetUniformLocation(shader_id, "pal");
 		GLint h1 = glGetUniformLocation(shader_id, "tex");
 		GLint h2 = glGetUniformLocation(shader_id, "lastpalette");
+		GLint h3 = glGetUniformLocation(shader_id, "texturesize");
+		GLfloat lastpalette[4];
 		lastpalette[0] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
 		lastpalette[1] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
 		lastpalette[2] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
 		lastpalette[3] = 1.0f;
+		GLfloat texturesize[2];
+		texturesize[0] = 1.0f / (float) gScreenWidth;
+		texturesize[1] = 1.0f / (float) gScreenHeight;
 		glUniform4fv(h2, 1, lastpalette);
-		if (h0 == -1 || h1 == -1 || h2 == -1) ::ExitProcess(0);
+		glUniform2fv(h3, 1, texturesize);
+		if (h0 == -1 || h1 == -1 || h2 == -1 || (gSmooth && h3 == -1)) ::ExitProcess(0);
 		if (firsttime)
 		{
 			glUniform1i(h0, 0);
@@ -543,45 +585,30 @@ void updatescreen()
 		glTexCoord2f(u,0); glVertex2f(  w,  h);
 		glTexCoord2f(u,v); glVertex2f(  w, -h); 
 		glTexCoord2f(0,v); glVertex2f( -w, -h);
-		/*
-		glMultiTexCoord1f(GL_TEXTURE0, 0); glMultiTexCoord2f(GL_TEXTURE1, 0,0); glVertex2f( -w,  h);
-		glMultiTexCoord1f(GL_TEXTURE0, 1); glMultiTexCoord2f(GL_TEXTURE1, u,0); glVertex2f(  w,  h);
-		glMultiTexCoord1f(GL_TEXTURE0, 1); glMultiTexCoord2f(GL_TEXTURE1, u,v); glVertex2f(  w, -h); 
-		glMultiTexCoord1f(GL_TEXTURE0, 0); glMultiTexCoord2f(GL_TEXTURE1, 0,v); glVertex2f( -w, -h);
-		*/
 		glEnd();
 	}
-	//glUseProgramObjectARB(0);
+
+	glUseProgram(0);
 	//getgdibitmap();
 	
-	/*if (gSoftCursor && xPos >= 0 && yPos >= 0)
+	if (gSoftCursor && !gCursorHidden && xPos >= 0 && yPos >= 0)
 	{
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 12, 20, 0, GL_RGBA, GL_UNSIGNED_BYTE, cursor);
 		glEnable(GL_TEXTURE_2D);
-		if (gIgnoreAspect)
-		{
-			w = (float)gScreenWidth / (float)tex_w;
-			h = (float)gScreenHeight / (float)tex_h;
-			// Do the actual rendering.
-			glBegin(GL_TRIANGLE_FAN);
-			glTexCoord2f(0,0);              glVertex2f(-1,  1);
-			glTexCoord2f(w,0);        glVertex2f( 1,  1);
-			glTexCoord2f(w,h);  glVertex2f( 1, -1); 
-			glTexCoord2f(0,h);        glVertex2f(-1, -1);
-			glEnd();
-		}
-		else
-		{
-			// Do the actual rendering.
-			glBegin(GL_TRIANGLE_FAN);
-			glTexCoord2f(0,0); glVertex2f( -w,  h);
-			glTexCoord2f(u,0); glVertex2f(  w,  h);
-			glTexCoord2f(u,v); glVertex2f(  w, -h); 
-			glTexCoord2f(0,v); glVertex2f( -w, -h);
-			glEnd();
+		glEnable(GL_BLEND);
+		glDisable(GL_DEPTH_TEST);
+		glBindTexture(GL_TEXTURE_2D, cursor_tex);
 
-		}
-	}*/
+		float cw[2] = { ((float) gScreenWidth + xPos + 12) / gScreenWidth * w * 2.0f - 3.0f * w, ((float) gScreenWidth + xPos) / gScreenWidth * w * 2.0f - 3.0f * w };
+		float ch[2] = { (float) (gScreenHeight - yPos) / gScreenHeight * h * 2.0f - h, (float) (gScreenHeight - yPos - 20) / gScreenHeight * h * 2.0f - h };
+		//if (w > h) w = 1; else h = 1;
+
+		glBegin(GL_TRIANGLE_FAN);
+		glTexCoord2f(0,0); glVertex2f(cw[1], ch[0]);
+		glTexCoord2f(1,0); glVertex2f(cw[0], ch[0]);
+		glTexCoord2f(1,1); glVertex2f(cw[0], ch[1]); 
+		glTexCoord2f(0,1); glVertex2f(cw[1], ch[1]);
+		glEnd();
+	}
 
 	glDeleteTextures(1, &palette);
 	glDeleteTextures(1, &palette_data);
@@ -660,6 +687,17 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			WINDOWPOS * p = (WINDOWPOS *)lParam;
 			p->flags |= SWP_NOSIZE | SWP_NOMOVE;
 			return 0;		
+		}
+		break;
+	case WM_PAINT:
+		logf("WndProc::WM_PAINT");
+		break;
+	case WM_SETCURSOR:
+		if (wParam == 0) gCursorHidden = 1; else gCursorHidden = 0;
+		if (gSoftCursor)
+		{
+			::SetCursor(0);
+			return 0;
 		}
 		break;
 	}
@@ -757,12 +795,11 @@ void init_gl()
 		glLinkProgram = (PFNGLLINKPROGRAMPROC) wglGetProcAddress("glLinkProgram");
 		glUseProgram = (PFNGLUSEPROGRAMPROC) wglGetProcAddress("glUseProgram");
 		glUniform1i = (PFNGLUNIFORM1IPROC) wglGetProcAddress("glUniform1i");
+		glUniform2fv = (PFNGLUNIFORM2FVPROC) wglGetProcAddress("glUniform2fv");
 		glUniform4fv = (PFNGLUNIFORM4FVPROC) wglGetProcAddress("glUniform4fv");
 		glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC) wglGetProcAddress("glGetUniformLocation");
 		glGetShaderiv = (PFNGLGETSHADERIVPROC) wglGetProcAddress("glGetShaderiv");
 		glGetShaderInfoLog = (PFNGLGETSHADERINFOLOGPROC) wglGetProcAddress("glGetShaderInfoLog");
-		glMultiTexCoord2f = (PFNGLMULTITEXCOORD2FPROC) wglGetProcAddress("glMultiTexCoord2f");
-		glMultiTexCoord1f = (PFNGLMULTITEXCOORD1FPROC) wglGetProcAddress("glMultiTexCoord1f");
 
 		logf("glActiveTexture: %08x", glActiveTexture);
 		logf("glCreateShader: %08x", glCreateShader);
@@ -773,46 +810,122 @@ void init_gl()
 		logf("glLinkProgram: %08x", glLinkProgram);
 		logf("glUseProgram: %08x", glUseProgram);
 		logf("glUniform1i: %08x", glUniform1i);
+		logf("glUniform2fv: %08x", glUniform2fv);
 		logf("glUniform4fv: %08x", glUniform4fv);
 		logf("glGetUniformLocation: %08x", glGetUniformLocation);
 		logf("glGetShaderiv: %08x", glGetShaderiv);
 		logf("glGetShaderInfoLog: %08x", glGetShaderInfoLog);
-		logf("glMultiTexCoord2f: %08x", glMultiTexCoord2f);
-		logf("glMultiTexCoord1f: %08x", glMultiTexCoord1f);
 
-		GLuint fragment_shader;
-		int compiled;
-		const GLchar *fragment_shader_src = "uniform sampler1D pal;\n"
-		"uniform sampler2D tex;\n"
-		"uniform vec4 lastpalette;\n"
-		"void main()\n"
-		"{\n"
-		"float pixel = texture2D(tex, gl_TexCoord[0].xy).r;\n"
-		"if (pixel == 1.0) {\n"
-		"gl_FragColor = lastpalette;\n"
-		"} else {\n"
-		"gl_FragColor = texture1D(pal, pixel);\n"
-		"}\n"
-		"}";
-		fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-		glShaderSource(fragment_shader, 1, &fragment_shader_src, 0);
-		glCompileShader(fragment_shader);
-		glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compiled);
-		if (!compiled)
+		if (glActiveTexture == 0 || glCreateShader == 0 || glShaderSource == 0 || glCompileShader == 0 ||
+			glCreateProgram == 0 || glAttachShader == 0 || glLinkProgram == 0 || glUseProgram == 0 ||
+			glUniform1i == 0 || glUniform4fv == 0 || glUniform4fv == 0 || glGetUniformLocation == 0 ||
+			glGetShaderiv == 0 || glGetShaderInfoLog == 0)
 		{
-			glGetShaderiv(fragment_shader, GL_INFO_LOG_LENGTH, &compiled);
-			if (compiled > 0)
+			gNoShaders = 1;
+		}
+		else
+		{
+			GLuint fragment_shader;
+			int compiled;
+			GLchar *fragment_shader_src;
+
+			if (gSmooth)
 			{
-				char *errlog = new char[compiled];
-				glGetShaderInfoLog(fragment_shader, compiled, 0, errlog);
-				MessageBox(gHwnd, errlog, "Shader Error", MB_OK | MB_ICONERROR);
-				delete[] errlog;
+				fragment_shader_src = "uniform sampler1D pal;\n"
+				"uniform sampler2D tex;\n"
+				"uniform vec4 lastpalette;\n"
+				"uniform vec2 texturesize;\n"
+				"void main()\n"
+				"{\n"
+				"vec2 texcoord = gl_TexCoord[0].xy;\n"
+				"vec2 f = fract(texcoord / texturesize);\n"
+				"texcoord -= f * texturesize * 1.5;\n"
+				"float tlpixel = texture2D(tex, texcoord).r;\n"
+				"float trpixel = texture2D(tex, texcoord + vec2(1.0, 0.0) * texturesize).r;\n"
+				"float blpixel = texture2D(tex, texcoord + vec2(0.0, 1.0) * texturesize).r;\n"
+				"float brpixel = texture2D(tex, texcoord + vec2(1.0, 1.0) * texturesize).r;\n"
+				"vec4 tlcolor, trcolor, blcolor, brcolor;\n"
+				"vec4 tA, tB;\n"
+				"if (tlpixel == 1.0) {\n"
+				"tlcolor = lastpalette;\n"
+				"} else {\n"
+				"tlcolor = texture1D(pal, tlpixel);\n"
+				"}\n"
+				"if (trpixel == 1.0) {\n"
+				"trcolor = lastpalette;\n"
+				"} else {\n"
+				"trcolor = texture1D(pal, trpixel);\n"
+				"}\n"
+				"if (blpixel == 1.0) {\n"
+				"blcolor = lastpalette;\n"
+				"} else {\n"
+				"blcolor = texture1D(pal, blpixel);\n"
+				"}\n"
+				"if (brpixel == 1.0) {\n"
+				"brcolor = lastpalette;\n"
+				"} else {\n"
+				"brcolor = texture1D(pal, brpixel);\n"
+				"}\n"
+				"tA = mix(tlcolor, trcolor, f.x);\n"
+				"tB = mix(blcolor, brcolor, f.x);\n"
+				"gl_FragColor = mix(tA, tB, f.y);\n"
+				"}";
+			}
+			else
+			{
+				fragment_shader_src = "uniform sampler1D pal;\n"
+				"uniform sampler2D tex;\n"
+				"uniform vec4 lastpalette;\n"
+				"void main()\n"
+				"{\n"
+				"float pixel = texture2D(tex, gl_TexCoord[0].xy).r;\n"
+				"if (pixel == 1.0) {\n"
+				"gl_FragColor = lastpalette;\n"
+				"} else {\n"
+				"gl_FragColor = texture1D(pal, pixel);\n"
+				"}\n"
+				"}";
+			}
+			fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+			glShaderSource(fragment_shader, 1, (const GLchar**)&fragment_shader_src, 0);
+			glCompileShader(fragment_shader);
+			glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &compiled);
+			if (!compiled)
+			{
+				glGetShaderiv(fragment_shader, GL_INFO_LOG_LENGTH, &compiled);
+				if (compiled > 0)
+				{
+					char *errlog = new char[compiled];
+					glGetShaderInfoLog(fragment_shader, compiled, 0, errlog);
+					MessageBox(gHwnd, errlog, "Shader Error", MB_OK | MB_ICONERROR);
+					delete[] errlog;
+				}
+				gNoShaders = 1;
+			}
+			else
+			{
+				shader_id = glCreateProgram();
+				glAttachShader(shader_id, fragment_shader);
+				glLinkProgram(shader_id);
 			}
 		}
-		shader_id = glCreateProgram();
-		//glAttachShader(shader_id, vertex_shader);
-		glAttachShader(shader_id, fragment_shader);
-		glLinkProgram(shader_id);
+
+		glEnable(GL_TEXTURE_2D);
+		glGenTextures(1, &cursor_tex);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 12, 20, 0, GL_RGBA, GL_UNSIGNED_BYTE, cursor);
+		if (gSmooth)
+		{
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+	    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+		}
+		else
+		{
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+	    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+		}
+	
+		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP);
+		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP);
 
 		ShowWindow(gHwnd, SW_SHOW);
 		SetForegroundWindow(gHwnd);
@@ -996,7 +1109,8 @@ void InitInstance(HANDLE hModule)
 	logf("InitInstance.");
 	// Our extremely simple config file handling..
 	gSmooth=INI_READ_INT("Rendering","bilinear_filter",0);
-	gSmooth=gHalfAndHalf=INI_READ_INT("Rendering","halfnhalf",0);
+	gHalfAndHalf=INI_READ_INT("Rendering","halfnhalf",0);
+	if (gHalfAndHalf)gSmooth=1;
 	gShowLogo=INI_READ_INT("Rendering","show_logo",0);
 	gOldLCD=INI_READ_INT("Rendering","old_lcd_level",0);
 	gScanDouble=INI_READ_INT("Rendering","wc3scandouble",0);
