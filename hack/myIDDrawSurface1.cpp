@@ -38,6 +38,7 @@ myIDDrawSurface1::myIDDrawSurface1(LPDDSURFACEDESC a)
 	memset(mSurfaceData, 0, mHeight * mPitch);
 
 	mCurrentPalette = NULL;
+	mClipper = NULL;
 }
 
 
@@ -488,6 +489,7 @@ HRESULT  __stdcall myIDDrawSurface1::Lock(LPRECT a,LPDDSURFACEDESC b,DWORD aFlag
 HRESULT  __stdcall myIDDrawSurface1::ReleaseDC(HDC a)
 {
 	logf("myIDDrawSurface1::ReleaseDC");
+	gGDI = 1;
 	return DD_OK;
 }
 

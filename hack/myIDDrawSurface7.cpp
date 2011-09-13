@@ -40,6 +40,7 @@ myIDDrawSurface7::myIDDrawSurface7(LPDDSURFACEDESC2 a)
 	memset(mSurfaceData, 0, mHeight * mPitch);
 
 	mCurrentPalette = NULL;
+	mClipper = NULL;
 }
 
 
