@@ -93,6 +93,7 @@ int gRealScreenWidth;
 int gRealScreenHeight;
 unsigned int texdata[2048*2048];
 WNDPROC origfunc = NULL;
+int gRebindHwnd;
 HDC gWindowDC;
 int gLastUpdate = -1;
 int gAllowResize = 0;
@@ -709,6 +710,15 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 void init_gl()
 {	
 	RECT r;
+	PIXELFORMATDESCRIPTOR pfd;
+	pfd.nSize=sizeof(PIXELFORMATDESCRIPTOR);                             // Size 
+	pfd.nVersion=1;                                                      // Version
+	pfd.dwFlags=PFD_DRAW_TO_WINDOW|PFD_SUPPORT_OPENGL|PFD_DOUBLEBUFFER;  // Selected flags
+	pfd.iPixelType=PFD_TYPE_RGBA;                                        // Pixelformat
+	pfd.cColorBits=16;                                                   // Pixel depth
+	pfd.cDepthBits=16;                                                   // Zbuffer depth
+	pfd.iLayerType=PFD_MAIN_PLANE;                                       // Place the pixelformat on the main plane
+
 	// Only init once..
 	if (!origfunc)
 	{
@@ -745,15 +755,6 @@ void init_gl()
 		// Set position just in case..
 		SetWindowPos(gHwnd, NULL, 0, -480 * (1 - gAltWinPos), 0, 0, SWP_NOSIZE);
 		gAllowResize = 0;
-
-		PIXELFORMATDESCRIPTOR pfd;
-		pfd.nSize=sizeof(PIXELFORMATDESCRIPTOR);                             // Size 
-		pfd.nVersion=1;                                                      // Version
-		pfd.dwFlags=PFD_DRAW_TO_WINDOW|PFD_SUPPORT_OPENGL|PFD_DOUBLEBUFFER;  // Selected flags
-		pfd.iPixelType=PFD_TYPE_RGBA;                                        // Pixelformat
-		pfd.cColorBits=16;                                                   // Pixel depth
-		pfd.cDepthBits=16;                                                   // Zbuffer depth
-		pfd.iLayerType=PFD_MAIN_PLANE;                                       // Place the pixelformat on the main plane
 	
 		HGLRC gOpenGLRC = NULL;
 		// this is a bit heavy-handed, but the delay dll loading
@@ -933,7 +934,24 @@ void init_gl()
 		// Create a timer so we'll get some events all the time
 		SetTimer(gHwnd, 1, 10, NULL);
 	}
+	else if (gRebindHwnd)
+	{
+		origfunc = (WNDPROC)GetWindowLong(gHwnd, GWL_WNDPROC);
+		SetWindowLong(gHwnd, GWL_WNDPROC, (long)newwinproc);
 
+		HGLRC gOpenGLRC = NULL;
+		do {
+			Sleep(50);
+			gWindowDC=GetDC(gHwnd);
+			int pf=ChoosePixelFormat(gWindowDC, &pfd);
+			SetPixelFormat(gWindowDC, pf, &pfd);
+			gOpenGLRC = wglCreateContext(gWindowDC);
+		} while (!gOpenGLRC);
+
+		wglMakeCurrent(gWindowDC, gOpenGLRC);
+	}
+
+	gRebindHwnd = 0;
 	r.top = 0;
 	r.left = 0;
 	r.bottom = gScreenHeight+1;

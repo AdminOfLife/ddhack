@@ -6,6 +6,7 @@ class myIDDrawSurface_Generic;
 #pragma data_seg (".ddraw_shared")
 extern HINSTANCE gHinst;
 extern HWND      gHwnd;
+extern int       gRebindHwnd;
 extern myIDDrawSurface_Generic * gPrimarySurface;
 extern myIDDrawSurface_Generic * gBackBuffer;
 extern int gScreenWidth;
