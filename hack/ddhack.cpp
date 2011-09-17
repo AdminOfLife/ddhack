@@ -545,11 +545,6 @@ void updatescreen()
 		GLint h0 = glGetUniformLocation(shader_id, "pal");
 		GLint h1 = glGetUniformLocation(shader_id, "tex");
 		GLint h2 = glGetUniformLocation(shader_id, "texturesize");
-		GLfloat lastpalette[4];
-		lastpalette[0] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
-		lastpalette[1] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
-		lastpalette[2] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
-		lastpalette[3] = 1.0f;
 		GLfloat texturesize[2];
 		texturesize[0] = 1.0f / (float) gScreenWidth;
 		texturesize[1] = 1.0f / (float) gScreenHeight;
