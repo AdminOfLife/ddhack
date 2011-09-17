@@ -227,21 +227,21 @@ HRESULT  __stdcall myIDDraw1::GetCaps(LPDDCAPS a, LPDDCAPS b)
 	}
 	if (b)
 	{
-		a->dwCaps = 0xf4c08241;
-		a->dwCaps2 = 1;
-		a->dwCKeyCaps = 0x200;
-		a->dwFXCaps = 0x3fce3;
-		a->dwFXAlphaCaps = 0;
-		a->dwPalCaps = 347;
-		a->dwSVCaps = 0;
-		a->dwVidMemTotal = 0;
-		a->dwVidMemFree = 0;
-		a->dwAlignBoundarySrc = 0;
-		a->dwAlignSizeSrc = 0;
-		a->dwAlignBoundaryDest = 0;
-		a->dwAlignSizeDest = 0;
-		a->dwAlignStrideAlign = 0x421350;
-		a->ddsCaps.dwCaps = 0x21fc8;
+		b->dwCaps = 0xf4c08241;
+		b->dwCaps2 = 1;
+		b->dwCKeyCaps = 0x200;
+		b->dwFXCaps = 0x3fce3;
+		b->dwFXAlphaCaps = 0;
+		b->dwPalCaps = 347;
+		b->dwSVCaps = 0;
+		b->dwVidMemTotal = 0;
+		b->dwVidMemFree = 0;
+		b->dwAlignBoundarySrc = 0;
+		b->dwAlignSizeSrc = 0;
+		b->dwAlignBoundaryDest = 0;
+		b->dwAlignSizeDest = 0;
+		b->dwAlignStrideAlign = 0x421350;
+		b->ddsCaps.dwCaps = 0x21fc8;
 	}
 
 	return DD_OK;

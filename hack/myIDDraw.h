@@ -186,6 +186,7 @@ public:
 	DDSURFACEDESC mSurfaceDesc;
 	DDCOLORKEY mSrcColorKey;
 	DDCOLORKEY mDestColorKey;
+	DDSCAPS mCaps;
 	myIDDrawPalette *mCurrentPalette;
 	myIDDrawClipper *mClipper;
 	unsigned char * mSurfaceData;
@@ -269,6 +270,7 @@ public:
 	DDSURFACEDESC2 mSurfaceDesc;
 	DDCOLORKEY mSrcColorKey;
 	DDCOLORKEY mDestColorKey;
+	DDSCAPS2 mCaps;
 	myIDDrawPalette *mCurrentPalette;
 	myIDDrawClipper *mClipper;
 	unsigned char * mSurfaceData;
