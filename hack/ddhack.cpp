@@ -590,13 +590,7 @@ void updatescreen()
 
 		GLint h0 = glGetUniformLocation(shader_id, "pal");
 		GLint h1 = glGetUniformLocation(shader_id, "tex");
-		GLint h2 = glGetUniformLocation(shader_id, "lastpalette");
-		lastpalette[0] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
-		lastpalette[1] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
-		lastpalette[2] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
-		lastpalette[3] = 1.0f;
-		glUniform4fv(h2, 1, lastpalette);
-		if (h0 == -1 || h1 == -1 || h2 == -1) ::ExitProcess(0);
+		if (h0 == -1 || h1 == -1) ::ExitProcess(0);
 		if (firsttime)
 		{
 			glUniform1i(h0, 0);
@@ -848,15 +842,12 @@ void init_gl()
 			int compiled;
 			const GLchar *fragment_shader_src = "uniform sampler1D pal;\n"
 			"uniform sampler2D tex;\n"
-			"uniform vec4 lastpalette;\n"
 			"void main()\n"
 			"{\n"
-			"float pixel = texture2D(tex, gl_TexCoord[0].xy).r;\n"
-			"if (pixel == 1.0) {\n"
-			"gl_FragColor = lastpalette;\n"
-			"} else {\n"
+			"const float scale = 255.0 / 256.0;\n"
+			"const float offset = 0.5 / 255.0 * scale;\n"
+			"float pixel = texture2D(tex, gl_TexCoord[0].xy).r * scale + offset;\n"
 			"gl_FragColor = texture1D(pal, pixel);\n"
-			"}\n"
 			"}";
 			fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
 			glShaderSource(fragment_shader, 1, &fragment_shader_src, 0);
