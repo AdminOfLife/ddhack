@@ -544,8 +544,7 @@ void updatescreen()
 
 		GLint h0 = glGetUniformLocation(shader_id, "pal");
 		GLint h1 = glGetUniformLocation(shader_id, "tex");
-		GLint h2 = glGetUniformLocation(shader_id, "lastpalette");
-		GLint h3 = glGetUniformLocation(shader_id, "texturesize");
+		GLint h2 = glGetUniformLocation(shader_id, "texturesize");
 		GLfloat lastpalette[4];
 		lastpalette[0] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
 		lastpalette[1] = gPrimarySurface->getCurrentPalette()->mPal[255].peRed / 255.0f;
@@ -554,9 +553,8 @@ void updatescreen()
 		GLfloat texturesize[2];
 		texturesize[0] = 1.0f / (float) gScreenWidth;
 		texturesize[1] = 1.0f / (float) gScreenHeight;
-		glUniform4fv(h2, 1, lastpalette);
-		glUniform2fv(h3, 1, texturesize);
-		if (h0 == -1 || h1 == -1 || h2 == -1 || (gSmooth && h3 == -1)) ::ExitProcess(0);
+		glUniform2fv(h2, 1, texturesize);
+		if (h0 == -1 || h1 == -1 || (gSmooth && h2 == -1)) ::ExitProcess(0);
 		if (firsttime)
 		{
 			glUniform1i(h0, 0);
@@ -834,41 +832,24 @@ void init_gl()
 			{
 				fragment_shader_src = "uniform sampler1D pal;\n"
 				"uniform sampler2D tex;\n"
-				"uniform vec4 lastpalette;\n"
 				"uniform vec2 texturesize;\n"
 				"void main()\n"
 				"{\n"
+				"const float scale = 255.0 / 256.0;\n"
+				"const float offset = 0.5 / 255.0 * scale;\n"
 				"vec2 texcoord = gl_TexCoord[0].xy;\n"
 				"vec2 f = fract(texcoord / texturesize);\n"
 				"texcoord -= f * texturesize * 1.5;\n"
-				"float tlpixel = texture2D(tex, texcoord).r;\n"
-				"float trpixel = texture2D(tex, texcoord + vec2(1.0, 0.0) * texturesize).r;\n"
-				"float blpixel = texture2D(tex, texcoord + vec2(0.0, 1.0) * texturesize).r;\n"
-				"float brpixel = texture2D(tex, texcoord + vec2(1.0, 1.0) * texturesize).r;\n"
-				"vec4 tlcolor, trcolor, blcolor, brcolor;\n"
-				"vec4 tA, tB;\n"
-				"if (tlpixel == 1.0) {\n"
-				"tlcolor = lastpalette;\n"
-				"} else {\n"
-				"tlcolor = texture1D(pal, tlpixel);\n"
-				"}\n"
-				"if (trpixel == 1.0) {\n"
-				"trcolor = lastpalette;\n"
-				"} else {\n"
-				"trcolor = texture1D(pal, trpixel);\n"
-				"}\n"
-				"if (blpixel == 1.0) {\n"
-				"blcolor = lastpalette;\n"
-				"} else {\n"
-				"blcolor = texture1D(pal, blpixel);\n"
-				"}\n"
-				"if (brpixel == 1.0) {\n"
-				"brcolor = lastpalette;\n"
-				"} else {\n"
-				"brcolor = texture1D(pal, brpixel);\n"
-				"}\n"
-				"tA = mix(tlcolor, trcolor, f.x);\n"
-				"tB = mix(blcolor, brcolor, f.x);\n"
+				"float tlpixel = texture2D(tex, texcoord).r * scale + offset;\n"
+				"float trpixel = texture2D(tex, texcoord + vec2(1.0, 0.0) * texturesize).r * scale + offset;\n"
+				"float blpixel = texture2D(tex, texcoord + vec2(0.0, 1.0) * texturesize).r * scale + offset;\n"
+				"float brpixel = texture2D(tex, texcoord + vec2(1.0, 1.0) * texturesize).r * scale + offset;\n"
+				"vec4 tlcolor = texture1D(pal, tlpixel);\n"
+				"vec4 trcolor = texture1D(pal, trpixel);\n"
+				"vec4 blcolor = texture1D(pal, blpixel);\n"
+				"vec4 brcolor = texture1D(pal, brpixel);\n"
+				"vec4 tA = mix(tlcolor, trcolor, f.x);\n"
+				"vec4 tB = mix(blcolor, brcolor, f.x);\n"
 				"gl_FragColor = mix(tA, tB, f.y);\n"
 				"}";
 			}
@@ -876,15 +857,12 @@ void init_gl()
 			{
 				fragment_shader_src = "uniform sampler1D pal;\n"
 				"uniform sampler2D tex;\n"
-				"uniform vec4 lastpalette;\n"
 				"void main()\n"
 				"{\n"
-				"float pixel = texture2D(tex, gl_TexCoord[0].xy).r;\n"
-				"if (pixel == 1.0) {\n"
-				"gl_FragColor = lastpalette;\n"
-				"} else {\n"
+				"const float scale = 255.0 / 256.0;\n"
+				"const float offset = 0.5 / 255.0 * scale;\n"
+				"float pixel = texture2D(tex, gl_TexCoord[0].xy).r * scale + offset;\n"
 				"gl_FragColor = texture1D(pal, pixel);\n"
-				"}\n"
 				"}";
 			}
 			fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
