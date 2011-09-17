@@ -9,6 +9,7 @@ myIDDrawSurface1::myIDDrawSurface1(LPDDSURFACEDESC a)
 	mWidth = gScreenWidth;
 	mHeight = gScreenHeight;
 	mSurfaceDesc = *a;
+	mCaps = a->ddsCaps;
 
 	if (a->dwFlags & DDSD_WIDTH) mWidth = a->dwWidth;
 	if (a->dwFlags & DDSD_HEIGHT) mHeight = a->dwHeight;
@@ -18,7 +19,7 @@ myIDDrawSurface1::myIDDrawSurface1(LPDDSURFACEDESC a)
 	if (a->dwFlags & DDSD_PITCH) mPitch = a->lPitch;
 	if (a->dwFlags & DDSD_CAPS)
 	{
-		if (a->ddsCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
+		if (mCaps.dwCaps & DDSCAPS_PRIMARYSURFACE)
 		{
 			gPrimarySurface = this;
 			init_gl();
@@ -284,8 +285,7 @@ HRESULT  __stdcall myIDDrawSurface1::GetBltStatus(DWORD a)
 HRESULT  __stdcall myIDDrawSurface1::GetCaps(LPDDSCAPS a)
 {
 	logf("myIDDrawSurface1::GetCaps");
-	if (this == gPrimarySurface)
-		a->dwCaps |= DDSCAPS_PRIMARYSURFACE | DDSCAPS_VISIBLE;
+	*a = mCaps;
 	return DD_OK;
 }
 
