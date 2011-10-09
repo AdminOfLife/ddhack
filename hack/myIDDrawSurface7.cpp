@@ -194,7 +194,7 @@ HRESULT  __stdcall myIDDrawSurface7::BltBatch(LPDDBLTBATCH a, DWORD b, DWORD c)
 
 HRESULT  __stdcall myIDDrawSurface7::BltFast(DWORD a,DWORD b,LPDIRECTDRAWSURFACE7 c, LPRECT d,DWORD e)
 {
-	logf("myIDDrawSurface7::BltFast(%d,%d,%08x,[%d,%d,%d,%,d],%08x)",a,b,c,d->top,d->left,d->bottom,d->right,e);
+	logf("myIDDrawSurface7::BltFast(%d,%d,%08x,[%d,%d,%d,%d],%08x)",a,b,c,d->top,d->left,d->bottom,d->right,e);
 	myIDDrawSurface7 *src = (myIDDrawSurface7*)c;
 	int usingColorKey = e & DDBLT_KEYDEST || e & DDBLT_KEYSRC || e & DDBLT_ALPHADEST;
 	unsigned char colorKey = 0;

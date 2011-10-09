@@ -117,6 +117,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="ddhack.cpp" />
+    <ClCompile Include="myIDDraw.cpp" />
     <ClCompile Include="myIDDraw1.cpp" />
     <ClCompile Include="myIDDraw2.cpp" />
     <ClCompile Include="myIDDraw7.cpp" />
