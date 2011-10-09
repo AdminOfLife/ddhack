@@ -56,7 +56,12 @@ HRESULT  __stdcall myIDDrawPalette::GetCaps(LPDWORD a)
 HRESULT  __stdcall myIDDrawPalette::GetEntries(DWORD a,DWORD b,DWORD c,LPPALETTEENTRY d)
 {
 	logf("myIDDrawPalette::GetEntries");
-	return DDERR_UNSUPPORTED;
+	
+	if (d == NULL)
+		return DDERR_INVALIDPARAMS;
+
+	memcpy(d, &mPal[b], c * sizeof(*d));
+	return DD_OK;
 }
 
 
@@ -64,6 +69,7 @@ HRESULT  __stdcall myIDDrawPalette::GetEntries(DWORD a,DWORD b,DWORD c,LPPALETTE
 HRESULT  __stdcall myIDDrawPalette::Initialize(LPDIRECTDRAW a, DWORD b, LPPALETTEENTRY c)
 {
 	logf("myIDDrawPalette::Initialize");
+
 	return DDERR_UNSUPPORTED;
 }
 
