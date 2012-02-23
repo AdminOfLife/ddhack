@@ -30,8 +30,10 @@
 #include "stdafx.h"
 #include <varargs.h>
 #include <windowsx.h>
+#include <detours/detours.h>
 #include "logo.h"
 #include "cursor.h"
+#include "myGdi.h"
 
 //#define LOG_DLL_ATTACH
 
@@ -70,6 +72,11 @@ int gSoftCursor = 0;
 unsigned int temp[2048*2048];
 
 #pragma data_seg ()
+
+HWND (WINAPI *CreateWindowEx_fn)(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam) = CreateWindowEx;
+BOOL (WINAPI *TextOutA_fn)(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString) = TextOutA;
+BOOL (WINAPI *InvalidateRect_fn)(HWND hWnd, const RECT *lpRect, BOOL bErase) = InvalidateRect;
+BOOL (WINAPI *ValidateRect_fn)(HWND hWnd, const RECT *lpRect) = ValidateRect;
 
 void logf(char *msg, ...)
 {
@@ -111,9 +118,81 @@ void logf(char *msg, ...)
 #endif
 }
 
+HWND WINAPI myCreateWindowEx(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
+{
+	logf("CreateWindowEx");
+	logf(" nWidth: %d", nWidth);
+	logf(" nHeight: %d", nHeight);
+	logf(" dwExStyle: %08x", dwExStyle);
+	logf(" dwStyle: %08x", dwStyle);
+	dwExStyle &= ~(WS_EX_TOPMOST);
+
+	if (dwStyle & WS_POPUP)
+		dwStyle &= ~(WS_MAXIMIZE);
+
+	HWND r = CreateWindowEx_fn(dwExStyle, lpClassName, lpWindowName, dwStyle, x, y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
+	logf(" return: %08x", r);
+	return r;
+}
+
+BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString)
+{
+	char temp[1024];
+	memcpy(temp, lpString, cchString);
+	temp[cchString] = 0;
+	logf("TextOutA_fn");
+	logf(" hdc:       %08x", hdc);
+	logf(" nXStart:   %d", nXStart);
+	logf(" nYStart:   %d", nYStart);
+	logf(" lpString:  \"%s\"", temp);
+	logf(" cchString: %08x", cchString);
+
+	/*int r = TextOutA_fn(hdc, nXStart, nYStart, lpString, cchString);
+	logf(" return:     %d", r);*/
+
+	//if (hdc == gWindowDC)
+		gdi_write_string(hdc, nXStart, nYStart, lpString, cchString);
+
+	return 1;
+}
+
+BOOL WINAPI myInvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase)
+{
+	logf("InvalidateRect");
+	logf(" hWnd:   %08x", hWnd);
+	if (lpRect != 0)
+		logf(" lpRect: [%d,%d,%d,%d]", lpRect->top, lpRect->right, lpRect->bottom, lpRect->left);
+	else
+		logf(" lpRect: [null]");
+	logf(" bErase: %d", bErase);
+
+	if (!hWnd)
+		{} // do nothing
+	else if (bErase)
+		gdi_clear(lpRect);
+	else
+		gdi_invalidate(lpRect);
+
+	return InvalidateRect_fn(hWnd, lpRect, bErase);
+}
+
+BOOL WINAPI myValidateRect(HWND hWnd, const RECT *lpRect)
+{
+	logf("ValidateRect");
+	logf(" hWnd:   %08x", hWnd);
+	if (lpRect != 0)
+		logf(" lpRect: [%d,%d,%d,%d]", lpRect->top, lpRect->right, lpRect->bottom, lpRect->left);
+	else
+		logf(" lpRect: [null]");
+
+	gdi_clear_invalidations();
+
+	return ValidateRect_fn(hWnd, lpRect);
+}
 
 void getgdibitmap()
 {
+#if 0
 	HDC hDC = CreateCompatibleDC(gWindowDC);
 	HBITMAP tempbitmap = CreateCompatibleBitmap(gWindowDC,gScreenWidth,gScreenHeight);
 	memset(temp, 0xFF, sizeof(int)*2048*2048);
@@ -193,6 +272,7 @@ void getgdibitmap()
 
 	}
 	::FillRect(gWindowDC, &r, (HBRUSH) GetStockObject(BLACK_BRUSH));
+#endif
 }
 
 
@@ -555,6 +635,32 @@ void updatescreen()
 
 	}
 
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_w, tex_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, gdi_get_buffer());
+	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND);
+	glColor3f(1.0f,1.0f,1.0f); 
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	if (gIgnoreAspect)
+	{
+		w = (float)gScreenWidth / (float)tex_w;
+		h = (float)gScreenHeight / (float)tex_h;
+		glBegin(GL_TRIANGLE_FAN);
+		glTexCoord2f(0,0);              glVertex2f(-1,  1);
+		glTexCoord2f(w,0);        glVertex2f( 1,  1);
+		glTexCoord2f(w,h);  glVertex2f( 1, -1); 
+		glTexCoord2f(0,h);        glVertex2f(-1, -1);
+		glEnd();
+	}
+	else
+	{
+		glBegin(GL_TRIANGLE_FAN);
+		glTexCoord2f(0,0); glVertex2f( -w,  h);
+		glTexCoord2f(u,0); glVertex2f(  w,  h);
+		glTexCoord2f(u,v); glVertex2f(  w, -h); 
+		glTexCoord2f(0,v); glVertex2f( -w, -h);
+		glEnd();
+	}
+
 	getgdibitmap();
 
 	SwapBuffers(gWindowDC);
@@ -634,6 +740,11 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			return 0;		
 		}
 		break;
+	case WM_PAINT:
+		{
+			gdi_run_invalidations();
+			break;
+		}
 	}
 
 	// Pass control to the application..
@@ -733,6 +844,8 @@ void init_gl()
 	r.bottom = gScreenHeight+1;
 	r.right = gScreenWidth+1;
 	ClipCursor(&r);
+	
+	gdi_clear_all();
 }
 
 BOOL APIENTRY DllMain( HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
@@ -800,6 +913,37 @@ void InitInstance(HANDLE hModule)
 	// Store Instance handle into global var
 	gHinst = (HINSTANCE)  hModule;
 
+	DisableThreadLibraryCalls((HMODULE) hModule);
+	DetourTransactionBegin();
+	DetourUpdateThread(GetCurrentThread());
+	DetourAttach(&(PVOID&)TextOutA_fn, myTextOutA);
+	if(DetourTransactionCommit() != NO_ERROR)
+	{
+		logf("Could not hook TextOutA");
+		::ExitProcess(0);
+	}
+	DetourTransactionBegin();
+	DetourAttach(&(PVOID&)CreateWindowEx_fn, myCreateWindowEx);
+	if(DetourTransactionCommit() != NO_ERROR)
+	{
+		logf("Could not hook CreateWindowEx");
+		::ExitProcess(0);
+	}
+	DetourTransactionBegin();
+	DetourAttach(&(PVOID&)InvalidateRect_fn, myInvalidateRect);
+	if(DetourTransactionCommit() != NO_ERROR)
+	{
+		logf("Could not hook InvalidateRect");
+		::ExitProcess(0);
+	}
+	DetourTransactionBegin();
+	DetourAttach(&(PVOID&)ValidateRect_fn, myValidateRect);
+	if(DetourTransactionCommit() != NO_ERROR)
+	{
+		logf("Could not hook ValidateRect");
+		::ExitProcess(0);
+	}
+	gdi_setup();
 	// We'll get the hWnd from setcooperativemode later.
 }
 

@@ -79,28 +79,30 @@ HRESULT  __stdcall myIDDrawSurface1::Blt(LPRECT a,LPDIRECTDRAWSURFACE b, LPRECT 
 			b,
 			c->top,c->left,c->bottom,c->right,
 			d,
-			e->dwDDFX);
+			e ? e->dwDDFX : 0);
 	else
 	if (a)
 		logf(this, "myIDDrawSurface1::Blt([%d,%d,%d,%d],%08x,[null],%d,%08x)",
 			a->top,a->left,a->bottom,a->right,
 			b,
 			d,
-			e->dwDDFX);
+			e ? e->dwDDFX : 0);
 	else
 	if (c)
 		logf(this, "myIDDrawSurface1::Blt([null],%08x,[%d,%d,%d,%d],%d,%08x)",
 			b,
 			c->top,c->left,c->bottom,c->right,
 			d,
-			e->dwDDFX);
+			e ? e->dwDDFX : 0);
 	else
 		logf(this, "myIDDrawSurface1::Blt([null],%08x,[null],%d,%08x)",
 			b,
 			d,
-			e->dwDDFX);
+			e ? e->dwDDFX : 0);
 	if (b) b = ((myIDDrawSurface1*)b)->m_pIDDrawSurface;
-	return m_pIDDrawSurface->Blt(a,b,c,d,e);
+	HRESULT r = m_pIDDrawSurface->Blt(a,b,c,d,e);
+	logf(this, "return: %08x", r);
+	return r;
 }
 
 
