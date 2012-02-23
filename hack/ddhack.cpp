@@ -147,11 +147,9 @@ BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int 
 	logf(" lpString:  \"%s\"", temp);
 	logf(" cchString: %08x", cchString);
 
-	/*int r = TextOutA_fn(hdc, nXStart, nYStart, lpString, cchString);
-	logf(" return:     %d", r);*/
-
-	//if (hdc == gWindowDC)
-		gdi_write_string(hdc, nXStart, nYStart, lpString, cchString);
+	
+	gdi_run_invalidations();
+	gdi_write_string(hdc, nXStart, nYStart, lpString, cchString);
 
 	return 1;
 }
@@ -740,11 +738,6 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			return 0;		
 		}
 		break;
-	case WM_PAINT:
-		{
-			gdi_run_invalidations();
-			break;
-		}
 	}
 
 	// Pass control to the application..
