@@ -21,7 +21,7 @@ void gdi_setup()
 		::ExitProcess(0);
 	}
 
-	e = FT_New_Face(ftlib, "C:/Windows/Fonts/ARIALUNI.TTF", 0, &ftarial);
+	e = FT_New_Face(ftlib, "C:/Windows/Fonts/ARIAL.TTF", 0, &ftarial);
 
 	if (e)
 	{
