@@ -168,7 +168,7 @@ HRESULT  __stdcall myIDDrawSurface1::Blt(LPRECT a,LPDIRECTDRAWSURFACE b, LPRECT 
 			else
 			{
 				for (i = 0; i < mHeight; i++)
-					for (j = 0; j < mWidth; j++);
+					for (j = 0; j < mWidth; j++)
 						if (!usingColorKey || src->mSurfaceData[i * src->mPitch + j] != colorKey)
 							mSurfaceData[i * mPitch + j] = src->mSurfaceData[i * src->mPitch + j];
 			}
