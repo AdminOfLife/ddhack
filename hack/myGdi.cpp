@@ -27,6 +27,10 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 	m2.eM22.fract = 0;
 	m2.eM22.value = 1;
 	char lc = 0;
+	unsigned char **buffers = new unsigned char*[cchString];
+	GLYPHMETRICS *gms = new GLYPHMETRICS[cchString];
+	int *kerns = new int[cchString];
+	int i;
 	std::string kerningstring = std::string(lf.lfFaceName);
 	kerningstring += (char) lf.lfWidth + 1;
 	kerningstring += (char) lf.lfHeight + 1;
@@ -59,7 +63,9 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 		calculated.insert(kerningstring);
 	}
 
-	for (int i = 0; i < cchString; i++)
+	int totalwidth = 0;
+
+	for (i = 0; i < cchString; i++)
 	{
 		std::string ks;
 		if(lc)
@@ -68,31 +74,52 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 			ks += lc;
 			ks += lpString[i];
 		}
-		GLYPHMETRICS gm;
-		int size = GetGlyphOutline(hdc, lpString[i], GGO_BITMAP, &gm, 0, 0, &m2);
-		char *buffer = new char[size];
-		GetGlyphOutline(hdc, lpString[i], GGO_BITMAP, &gm, size, buffer, &m2);
-		if (lc)
-			if (kernings.find(ks) != kernings.end())
-				nXStart += kernings[ks];
-		DWORD pitch = (gm.gmBlackBoxX / 8 + 3) & ~3;
+		int size = GetGlyphOutline(hdc, lpString[i], GGO_BITMAP, &gms[i], 0, 0, &m2);
+		buffers[i] = new unsigned char[size];
+		GetGlyphOutline(hdc, lpString[i], GGO_BITMAP, &gms[i], size, buffers[i], &m2);
+		if (lc && kernings.find(ks) != kernings.end())
+		{
+			kerns[i] = kernings[ks];
+			totalwidth += kerns[i];
+		}
+		else
+		{
+			kerns[i] = 0;
+		}
+		totalwidth += gms[i].gmCellIncX;
+		lc = lpString[i];
+	}
+
+	UINT align = GetTextAlign(hdc);
+
+	if (align & TA_RIGHT)
+		nXStart -= totalwidth;
+	else if (align & TA_CENTER)
+		nXStart -= totalwidth / 2;
+
+	for (i = 0; i < cchString; i++)
+	{
+		nXStart += kerns[i];
+		DWORD pitch = ((gms[i].gmBlackBoxX / 8) + 3) & ~3;
 		if (!pitch) pitch = 4;
-		for (DWORD j = 0; j < gm.gmBlackBoxX; j++)
-			for (DWORD k = 0; k < gm.gmBlackBoxY; k++)
+		for (DWORD j = 0; j < gms[i].gmBlackBoxX; j++)
+			for (DWORD k = 0; k < gms[i].gmBlackBoxY; k++)
 			{
-				unsigned char pixel = ((buffer[(k * pitch) + (j / 8)] >> ((7 - (j + 8)) & 7)) & 1) * 0xFF;
+				unsigned char pixel = ((buffers[i][(k * pitch) + (j / 8)] >> ((7 - (j + 8)) & 7)) & 1) * 0xFF;
 				if (!pixel) continue;
-				int gdi_offset = (tex_w * (k + nYStart - gm.gmptGlyphOrigin.y + height) + (j + nXStart)) * 4;
+				int gdi_offset = (tex_w * (k + nYStart - gms[i].gmptGlyphOrigin.y + height) + (j + nXStart)) * 4;
 				gdi_buffer[gdi_offset] = (unsigned char) (pixel * ((c & 0x000000FF) / 255.f));
 				gdi_buffer[gdi_offset + 1] = (unsigned char) (pixel * (((c & 0x0000FF00) >> 8) / 255.f));
 				gdi_buffer[gdi_offset + 2] = (unsigned char) (pixel * (((c & 0x00FF0000) >> 16) / 255.f));
 				gdi_buffer[gdi_offset + 3] = pixel;
 			}
 
-		delete [] buffer;
-		nXStart += gm.gmCellIncX;
-		lc = lpString[i];
+		delete [] buffers[i];
+		nXStart += gms[i].gmCellIncX;
 	}
+	delete [] buffers;
+	delete [] gms;
+	delete [] kerns;
 }
 
 void gdi_clear(const RECT *lpRect)

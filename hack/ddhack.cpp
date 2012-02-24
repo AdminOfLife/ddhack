@@ -140,12 +140,7 @@ BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int 
 	char temp[1024];
 	memcpy(temp, lpString, cchString);
 	temp[cchString] = 0;
-	logf("TextOutA_fn");
-	logf(" hdc:       %08x", hdc);
-	logf(" nXStart:   %d", nXStart);
-	logf(" nYStart:   %d", nYStart);
-	logf(" lpString:  \"%s\"", temp);
-	logf(" cchString: %08x", cchString);
+	logf("TextOutA");
 
 	
 	gdi_run_invalidations();
@@ -157,12 +152,6 @@ BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int 
 BOOL WINAPI myInvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase)
 {
 	logf("InvalidateRect");
-	logf(" hWnd:   %08x", hWnd);
-	if (lpRect != 0)
-		logf(" lpRect: [%d,%d,%d,%d]", lpRect->top, lpRect->right, lpRect->bottom, lpRect->left);
-	else
-		logf(" lpRect: [null]");
-	logf(" bErase: %d", bErase);
 
 	if (!hWnd)
 		{} // do nothing
@@ -177,11 +166,6 @@ BOOL WINAPI myInvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase)
 BOOL WINAPI myValidateRect(HWND hWnd, const RECT *lpRect)
 {
 	logf("ValidateRect");
-	logf(" hWnd:   %08x", hWnd);
-	if (lpRect != 0)
-		logf(" lpRect: [%d,%d,%d,%d]", lpRect->top, lpRect->right, lpRect->bottom, lpRect->left);
-	else
-		logf(" lpRect: [null]");
 
 	gdi_clear_invalidations();
 
