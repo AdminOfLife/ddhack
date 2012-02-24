@@ -49,10 +49,10 @@
     <CodeAnalysisRuleSet Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">AllRules.ruleset</CodeAnalysisRuleSet>
     <CodeAnalysisRules Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
     <CodeAnalysisRuleAssemblies Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" />
-    <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(DXSDK_DIR)\Include;C:\Program Files (x86)\Microsoft Research\Detours Express 2.1\include;C:\Program Files (x86)\gnuwin32\include;C:\Program Files (x86)\gnuwin32\include\freetype2;$(IncludePath)</IncludePath>
-    <LibraryPath Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(DXSDK_DIR)\Lib\x86;C:\Program Files (x86)\Microsoft Research\Detours Express 2.1\lib;C:\Program Files (x86)\GnuWin32\lib;$(LibraryPath)</LibraryPath>
-    <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(DXSDK_DIR)\Include;C:\Program Files (x86)\Microsoft Research\Detours Express 2.1\include;C:\Program Files (x86)\gnuwin32\include;C:\Program Files (x86)\gnuwin32\include\freetype2;$(IncludePath)</IncludePath>
-    <LibraryPath Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(DXSDK_DIR)\Lib\x86;C:\Program Files (x86)\Microsoft Research\Detours Express 2.1\lib;C:\Program Files (x86)\GnuWin32\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(DXSDK_DIR)\Include;C:\Program Files (x86)\Microsoft Research\Detours Express 2.1\include;$(IncludePath)</IncludePath>
+    <LibraryPath Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(DXSDK_DIR)\Lib\x86;C:\Program Files (x86)\Microsoft Research\Detours Express 2.1\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(DXSDK_DIR)\Include;C:\Program Files (x86)\Microsoft Research\Detours Express 2.1\include;$(IncludePath)</IncludePath>
+    <LibraryPath Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(DXSDK_DIR)\Lib\x86;C:\Program Files (x86)\Microsoft Research\Detours Express 2.1\lib;$(LibraryPath)</LibraryPath>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">ddraw</TargetName>
     <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">ddraw</TargetName>
   </PropertyGroup>
@@ -68,7 +68,7 @@
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>dxguid.lib;opengl32.lib;detours.lib;detoured.lib;freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>dxguid.lib;opengl32.lib;detours.lib;detoured.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)\$(TargetName)$(TargetExt)</OutputFile>
       <ModuleDefinitionFile>ddhack.def</ModuleDefinitionFile>
       <DelayLoadDLLs>opengl32.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
@@ -96,7 +96,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>dxguid.lib;opengl32.lib;detours.lib;detoured.lib;freetype.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>dxguid.lib;opengl32.lib;detours.lib;detoured.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)\$(TargetName)$(TargetExt)</OutputFile>
       <ModuleDefinitionFile>ddhack.def</ModuleDefinitionFile>
       <DelayLoadDLLs>opengl32.dll;%(DelayLoadDLLs)</DelayLoadDLLs>

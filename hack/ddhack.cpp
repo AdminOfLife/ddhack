@@ -936,7 +936,6 @@ void InitInstance(HANDLE hModule)
 		logf("Could not hook ValidateRect");
 		::ExitProcess(0);
 	}
-	gdi_setup();
 	// We'll get the hWnd from setcooperativemode later.
 }
 
