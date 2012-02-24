@@ -1,6 +1,11 @@
 #include "stdafx.h"
 #include "myGdi.h"
+#include <string>
+#include <map>
+#include <cstring>
 #include FT_GLYPH_H
+#include FT_SFNT_NAMES_H
+#include FT_TRUETYPE_IDS_H
 
 unsigned char gdi_buffer[2048*2048*4];
 RECT invalidateRects[1024];
@@ -9,11 +14,105 @@ int invalidateRectsCount = 0;
 FT_Library ftlib;
 FT_Face ftarial;
 
-/*struct {
-	FT_Face face;
-	char name[32];
-} fontlist[1024];*/
+std::map<std::string, std::string> fontlist;
 
+void add_font_to_list(char *fontname, char *filename)
+{
+	fontlist.insert(std::pair<std::string, std::string>(std::string(fontname), std::string(filename)));
+}
+
+void populate_font_list()
+{
+	// 1. from the registry, EnumFontFamiliesEx doesn't give us a filename and freetype needs one, so we do it this way
+	HKEY key;
+	if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts", 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS, &key) == ERROR_SUCCESS)
+	{
+		char fontname[256];
+		DWORD fontname_size = 256;
+		DWORD type;
+		int i = 0;
+		while (RegEnumValue(key, i++, fontname, &fontname_size, 0, &type, 0, 0) != ERROR_NO_MORE_ITEMS)
+		{
+			if (type != REG_SZ)
+				continue;
+			fontname_size = 256;
+			char *offset = strstr(fontname, " (TrueType)");
+
+			if (!offset)
+				continue;
+
+			char filename[256];
+			DWORD filename_size = sizeof(filename);
+
+			if (RegQueryValueEx(key, fontname, 0, 0, (LPBYTE) filename, &filename_size) == ERROR_SUCCESS)
+			{
+				char fullpath[1024];
+				*offset = 0;
+				_snprintf(fullpath, 1024, "C:/Windows/Fonts/%s", filename);
+				add_font_to_list(fontname, fullpath);
+			}
+		}
+	}
+	// 2. fonts in the "fonts" folder of the active directory
+	WIN32_FIND_DATA filedat;
+	HANDLE file = FindFirstFile("fonts\\*.ttf", &filedat);
+
+	do
+	{
+		char filename[256];
+		_snprintf(filename, 256, "fonts/%s", filedat.cFileName);
+		FT_Face f;
+		int e = FT_New_Face(ftlib, filename, 0, &f);
+
+		if (!e)
+		{
+			int total = FT_Get_Sfnt_Name_Count(f);
+			char fontname[256];
+			char familyname[64] = { 0 };
+			char subname[64] = { 0 };
+
+			for (int i = 0; i < total; i++)
+			{
+				FT_SfntName data;
+				FT_Get_Sfnt_Name(f, i, &data);
+				unsigned int j;
+
+				if (data.platform_id != TT_PLATFORM_MICROSOFT || data.language_id != TT_MS_LANGID_ENGLISH_UNITED_STATES)
+					continue;
+
+				else if (data.name_id == TT_NAME_ID_FONT_FAMILY)
+				{
+					// utf-16 encoded, but the names are basically always ascii-only
+					for (j = 0; j < data.string_len / 2 && j < 64; j++)
+						familyname[j] = data.string[j*2+1];
+					familyname[j+1] = 0;
+					if (*subname != 0)
+						goto combine;
+				}
+				else if (data.name_id == TT_NAME_ID_FONT_SUBFAMILY)
+				{
+					for (j = 0; j < data.string_len / 2 && j < 64; j++)
+						subname[j] = data.string[j*2+1];
+					subname[j+1] = 0;
+					if (*familyname != 0)
+						goto combine;
+				}
+				continue;
+combine:
+				if (strcmp(subname, "Regular") == 0)
+					add_font_to_list(familyname, filename);
+				else
+				{
+					_snprintf(fontname, 256, "%s %s", familyname, subname);
+					add_font_to_list(fontname, filename);
+				}
+				break;
+			}
+
+			FT_Done_Face(f);
+		}
+	} while (FindNextFile(file, &filedat));
+}
 
 void gdi_setup()
 {
@@ -27,7 +126,8 @@ void gdi_setup()
 		::ExitProcess(0);
 	}
 
-	e = FT_New_Face(ftlib, "C:/Windows/Fonts/ARIAL.TTF", 0, &ftarial);
+	// fallback font. if the system doesn't have Arial, then we have bigger problems
+	e = FT_New_Face(ftlib, "C:/Windows/Fonts/arial.ttf", 0, &ftarial);
 
 	if (e)
 	{
@@ -36,32 +136,42 @@ void gdi_setup()
 	}
 
 	FT_Select_Charmap(ftarial, FT_ENCODING_UNICODE);
-
+	populate_font_list();
 	gdi_clear_all();
 }
 
 void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString)
 {
 	LOGFONT lf;
+	TEXTMETRIC tm;
+	FT_Face f = 0;
 	GetObject(GetCurrentObject(hdc, OBJ_FONT), sizeof(lf), &lf);
-	int height = lf.lfHeight < 0 ? -lf.lfHeight : lf.lfHeight * 64 / 72;
-	FT_Set_Pixel_Sizes(ftarial, 0, height);
+	GetTextMetrics(hdc, &tm);
+	std::string name(lf.lfFaceName);
+	name += (lf.lfWeight > 400) ? " Bold" : "";
+	name += lf.lfItalic ? " Italic" : "";
+	if (fontlist.find(name) == fontlist.end() || FT_New_Face(ftlib, fontlist[name].c_str(), 0, &f))
+		// try to fallback to regular font if bold/italic varieties can't be found
+		if (fontlist.find(std::string(lf.lfFaceName)) == fontlist.end() || FT_New_Face(ftlib, fontlist[std::string(lf.lfFaceName)].c_str(), 0, &f))
+			f = ftarial;
+	int height = lf.lfHeight < 0 ? -lf.lfHeight : lf.lfHeight;
+	FT_Set_Pixel_Sizes(f, 0, height);
 	COLORREF c = GetTextColor(hdc);
 
-	FT_Bool hk = FT_HAS_KERNING(ftarial);
+	FT_Bool hk = FT_HAS_KERNING(f);
 	FT_UInt lc = 0;
 	
 	for (int i = 0; i < cchString; i++)
 	{
 		FT_Glyph t;
-		FT_UInt cc = FT_Get_Char_Index(ftarial, lpString[i]);
-		FT_Load_Glyph(ftarial, cc, FT_LOAD_DEFAULT);
-		FT_Get_Glyph(ftarial->glyph, &t);
+		FT_UInt cc = FT_Get_Char_Index(f, lpString[i]);
+		FT_Load_Glyph(f, cc, FT_LOAD_DEFAULT);
+		FT_Get_Glyph(f->glyph, &t);
 		FT_Vector d;
 		if (hk)
 		{
-			FT_Get_Kerning(ftarial, lc, cc, FT_KERNING_DEFAULT, &d);
-			nXStart += d.x >> 16;
+			FT_Get_Kerning(f, lc, cc, FT_KERNING_DEFAULT, &d);
+			nXStart -= d.x >> 16;
 		}
 		FT_Glyph_To_Bitmap(&t, FT_RENDER_MODE_MONO, 0, 1);
 		FT_BitmapGlyph bg = (FT_BitmapGlyph) t;
@@ -82,6 +192,9 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 		nXStart += t->advance.x >> 16;
 		lc = c;
 	}
+
+	if (f != ftarial)
+		FT_Done_Face(f);
 }
 
 void gdi_clear(const RECT *lpRect)
