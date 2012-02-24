@@ -834,8 +834,8 @@ void init_gl()
 
 	r.top = 0;
 	r.left = 0;
-	r.bottom = gScreenHeight+1;
-	r.right = gScreenWidth+1;
+	r.bottom = gScreenHeight;
+	r.right = gScreenWidth;
 	ClipCursor(&r);
 	
 	gdi_clear_all();
