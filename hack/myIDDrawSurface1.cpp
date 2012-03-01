@@ -103,7 +103,7 @@ HRESULT  __stdcall myIDDrawSurface1::AddOverlayDirtyRect(LPRECT a)
 HRESULT  __stdcall myIDDrawSurface1::Blt(LPRECT a,LPDIRECTDRAWSURFACE b, LPRECT c,DWORD d, LPDDBLTFX e)
 {
 	if (a && c)
-		logf("myIDDrawSurface7::Blt([%d,%d,%d,%d],%08x,[%d,%d,%d,%d],%08x,%08x)",
+		logf("myIDDrawSurface1::Blt([%d,%d,%d,%d],%08x,[%d,%d,%d,%d],%08x,%08x)",
 			a->top,a->left,a->bottom,a->right,
 			b,
 			c->top,c->left,c->bottom,c->right,
@@ -111,20 +111,20 @@ HRESULT  __stdcall myIDDrawSurface1::Blt(LPRECT a,LPDIRECTDRAWSURFACE b, LPRECT 
 			e ? e->dwDDFX : 0);
 	else
 	if (a)
-		logf("myIDDrawSurface7::Blt([%d,%d,%d,%d],%08x,[null],%08x,%08x)",
+		logf("myIDDrawSurface1::Blt([%d,%d,%d,%d],%08x,[null],%08x,%08x)",
 			a->top,a->left,a->bottom,a->right,
 			b,
 			d,
 			e ? e->dwDDFX : 0);
 	else
 	if (c)
-		logf("myIDDrawSurface7::Blt([null],%08x,[%d,%d,%d,%d],%08x,%08x)",
+		logf("myIDDrawSurface1::Blt([null],%08x,[%d,%d,%d,%d],%08x,%08x)",
 			b,
 			c->top,c->left,c->bottom,c->right,
 			d,
 			e ? e->dwDDFX : 0);
 	else
-		logf("myIDDrawSurface7::Blt([null],%08x,[null],%08x,%08x)",
+		logf("myIDDrawSurface1::Blt([null],%08x,[null],%08x,%08x)",
 			b,
 			d,
 			e ? e->dwDDFX : 0);
@@ -175,7 +175,6 @@ HRESULT  __stdcall myIDDrawSurface1::Blt(LPRECT a,LPDIRECTDRAWSURFACE b, LPRECT 
 			}
 		}
 	}
-
 
 	return DD_OK;
 }

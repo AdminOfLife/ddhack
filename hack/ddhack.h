@@ -14,6 +14,8 @@ extern int gScreenHeight;
 extern int gScreenBits;
 extern int gRealScreenWidth;
 extern int gRealScreenHeight;
+extern int tex_w;
+extern int tex_h;
 extern int gAltWinPos;
 extern int gWc3SmallVid;
 extern int gGDI;

@@ -31,8 +31,10 @@
 #include <varargs.h>
 #include <windowsx.h>
 #include <gl/GL.h>
+#include <detours/detours.h>
 #include "logo.h"
 #include "cursor.h"
+#include "myGdi.h"
 
 typedef __int64 GLint64EXT;
 typedef char GLchar;
@@ -121,6 +123,11 @@ GLuint cursor_tex;
 
 #pragma data_seg ()
 
+HWND (WINAPI *CreateWindowEx_fn)(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam) = CreateWindowEx;
+BOOL (WINAPI *TextOutA_fn)(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString) = TextOutA;
+BOOL (WINAPI *InvalidateRect_fn)(HWND hWnd, const RECT *lpRect, BOOL bErase) = InvalidateRect;
+BOOL (WINAPI *ValidateRect_fn)(HWND hWnd, const RECT *lpRect) = ValidateRect;
+
 void logf(char *msg, ...)
 {
 #if 0
@@ -161,10 +168,62 @@ void logf(char *msg, ...)
 #endif
 }
 
+HWND WINAPI myCreateWindowEx(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
+{
+	logf("CreateWindowEx");
+	logf(" nWidth: %d", nWidth);
+	logf(" nHeight: %d", nHeight);
+	logf(" dwExStyle: %08x", dwExStyle);
+	logf(" dwStyle: %08x", dwStyle);
+	dwExStyle &= ~(WS_EX_TOPMOST);
+
+	if (dwStyle & WS_POPUP)
+		dwStyle &= ~(WS_MAXIMIZE);
+
+	HWND r = CreateWindowEx_fn(dwExStyle, lpClassName, lpWindowName, dwStyle, x, y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
+	logf(" return: %08x", r);
+	return r;
+}
+
+BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString)
+{
+	char temp[1024];
+	memcpy(temp, lpString, cchString);
+	temp[cchString] = 0;
+	logf("TextOutA");
+	
+	gdi_run_invalidations();
+	gdi_write_string(hdc, nXStart, nYStart, lpString, cchString);
+
+	return TextOutA_fn(hdc, nXStart, nYStart, lpString, cchString);
+}
+
+BOOL WINAPI myInvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase)
+{
+	logf("InvalidateRect");
+
+	if (!hWnd)
+		{} // do nothing
+	else if (bErase)
+		gdi_clear(lpRect);
+	else
+		gdi_invalidate(lpRect);
+
+	return InvalidateRect_fn(hWnd, lpRect, bErase);
+}
+
+BOOL WINAPI myValidateRect(HWND hWnd, const RECT *lpRect)
+{
+	logf("ValidateRect");
+
+	gdi_clear_invalidations();
+
+	return ValidateRect_fn(hWnd, lpRect);
+}
 
 void getgdibitmap()
 {
-	if (gGDI)
+#if 0
 	{
 		HDC hDC = CreateCompatibleDC(gWindowDC);
 		HBITMAP tempbitmap = CreateCompatibleBitmap(gWindowDC,gScreenWidth,gScreenHeight);
@@ -246,6 +305,7 @@ void getgdibitmap()
 		glTexCoord2f(0,v); glVertex2f( -w, -h);
 		glEnd();
 	}
+#endif
 }
 
 
@@ -253,7 +313,6 @@ void updatescreen()
 {
 	int wc3video = 0;
 	static int firsttick = -1;
-	GLuint palette = 0, palette_data = 0;
 	int texformat = 0;
 
 	logf("updatescreen()");
@@ -442,16 +501,10 @@ void updatescreen()
 
 	if (texformat == 2)
 	{
-		glActiveTexture(GL_TEXTURE0);
-		glGenTextures(1, &palette);
-		glBindTexture(GL_TEXTURE_1D, palette);
 		glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, gPrimarySurface->getCurrentPalette()->mPal);
 		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glEnable(GL_TEXTURE_1D);
-		glActiveTexture(GL_TEXTURE1);
-		glGenTextures(1, &palette_data);
-		glBindTexture(GL_TEXTURE_2D, palette_data);
 	}
     // upload texture
 	if (texformat == 0)
@@ -501,6 +554,7 @@ void updatescreen()
 	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP);
 	
     glEnable(GL_TEXTURE_2D);
+	glDisable(GL_DEPTH_TEST);
 
 	glShadeModel(GL_SMOOTH);
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0);
@@ -575,6 +629,34 @@ void updatescreen()
 	{
 		// Do the actual rendering.
 		glBegin(GL_TRIANGLE_FAN);
+		glTexCoord2f(0,0); glVertex2f( -w, h);
+		glTexCoord2f(u,0); glVertex2f( w, h);
+		glTexCoord2f(u,v); glVertex2f( w, -h);
+		glTexCoord2f(0,v); glVertex2f( -w, -h);
+		glEnd();
+	}
+
+	glUseProgram(0);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_w, tex_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, gdi_get_buffer());
+	glDisable(GL_TEXTURE_1D);
+	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND);
+	glDisable(GL_DEPTH_TEST);
+	if (gIgnoreAspect)
+	{
+		w = (float)gScreenWidth / (float)tex_w;
+		h = (float)gScreenHeight / (float)tex_h;
+		glBegin(GL_TRIANGLE_FAN);
+		glTexCoord2f(0,0);              glVertex2f(-1,  1);
+		glTexCoord2f(w,0);        glVertex2f( 1,  1);
+		glTexCoord2f(w,h);  glVertex2f( 1, -1); 
+		glTexCoord2f(0,h);        glVertex2f(-1, -1);
+		glEnd();
+	}
+	else
+	{
+		glBegin(GL_TRIANGLE_FAN);
 		glTexCoord2f(0,0); glVertex2f( -w,  h);
 		glTexCoord2f(u,0); glVertex2f(  w,  h);
 		glTexCoord2f(u,v); glVertex2f(  w, -h); 
@@ -582,15 +664,12 @@ void updatescreen()
 		glEnd();
 	}
 
-	glUseProgram(0);
-	//getgdibitmap();
-	
 	if (gSoftCursor && !gCursorHidden && xPos >= 0 && yPos >= 0)
 	{
 		glEnable(GL_TEXTURE_2D);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glEnable(GL_BLEND);
-		glDisable(GL_DEPTH_TEST);
-		glBindTexture(GL_TEXTURE_2D, cursor_tex);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 12, 20, 0, GL_RGBA, GL_UNSIGNED_BYTE, cursor);
 
 		float cw[2] = { ((float) gScreenWidth + xPos + 12) / gScreenWidth * w * 2.0f - 3.0f * w, ((float) gScreenWidth + xPos) / gScreenWidth * w * 2.0f - 3.0f * w };
 		float ch[2] = { (float) (gScreenHeight - yPos) / gScreenHeight * h * 2.0f - h, (float) (gScreenHeight - yPos - 20) / gScreenHeight * h * 2.0f - h };
@@ -599,13 +678,11 @@ void updatescreen()
 		glBegin(GL_TRIANGLE_FAN);
 		glTexCoord2f(0,0); glVertex2f(cw[1], ch[0]);
 		glTexCoord2f(1,0); glVertex2f(cw[0], ch[0]);
-		glTexCoord2f(1,1); glVertex2f(cw[0], ch[1]); 
+		glTexCoord2f(1,1); glVertex2f(cw[0], ch[1]);
 		glTexCoord2f(0,1); glVertex2f(cw[1], ch[1]);
 		glEnd();
 	}
 
-	glDeleteTextures(1, &palette);
-	glDeleteTextures(1, &palette_data);
 	SwapBuffers(gWindowDC);
 }
 
@@ -884,23 +961,6 @@ void init_gl()
 			}
 		}
 
-		glEnable(GL_TEXTURE_2D);
-		glGenTextures(1, &cursor_tex);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 12, 20, 0, GL_RGBA, GL_UNSIGNED_BYTE, cursor);
-		if (gSmooth)
-		{
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
-	    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-		}
-		else
-		{
-        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
-	    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
-		}
-	
-		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP);
-		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP);
-
 		ShowWindow(gHwnd, SW_SHOW);
 		SetForegroundWindow(gHwnd);
 
@@ -927,9 +987,11 @@ void init_gl()
 	gRebindHwnd = 0;
 	r.top = 0;
 	r.left = 0;
-	r.bottom = gScreenHeight+1;
-	r.right = gScreenWidth+1;
+	r.bottom = gScreenHeight;
+	r.right = gScreenWidth;
 	ClipCursor(&r);
+	
+	gdi_clear_all();
 }
 
 BOOL APIENTRY DllMain( HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
@@ -998,6 +1060,36 @@ void InitInstance(HANDLE hModule)
 	// Store Instance handle into global var
 	gHinst = (HINSTANCE)  hModule;
 
+	DisableThreadLibraryCalls((HMODULE) hModule);
+	DetourTransactionBegin();
+	DetourUpdateThread(GetCurrentThread());
+	DetourAttach(&(PVOID&)TextOutA_fn, myTextOutA);
+	if(DetourTransactionCommit() != NO_ERROR)
+	{
+		logf("Could not hook TextOutA");
+		::ExitProcess(0);
+	}
+	DetourTransactionBegin();
+	DetourAttach(&(PVOID&)CreateWindowEx_fn, myCreateWindowEx);
+	if(DetourTransactionCommit() != NO_ERROR)
+	{
+		logf("Could not hook CreateWindowEx");
+		::ExitProcess(0);
+	}
+	DetourTransactionBegin();
+	DetourAttach(&(PVOID&)InvalidateRect_fn, myInvalidateRect);
+	if(DetourTransactionCommit() != NO_ERROR)
+	{
+		logf("Could not hook InvalidateRect");
+		::ExitProcess(0);
+	}
+	DetourTransactionBegin();
+	DetourAttach(&(PVOID&)ValidateRect_fn, myValidateRect);
+	if(DetourTransactionCommit() != NO_ERROR)
+	{
+		logf("Could not hook ValidateRect");
+		::ExitProcess(0);
+	}
 	// We'll get the hWnd from setcooperativemode later.
 }
 
