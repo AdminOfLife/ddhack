@@ -77,6 +77,7 @@ HWND (WINAPI *CreateWindowEx_fn)(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR l
 BOOL (WINAPI *TextOutA_fn)(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString) = TextOutA;
 BOOL (WINAPI *InvalidateRect_fn)(HWND hWnd, const RECT *lpRect, BOOL bErase) = InvalidateRect;
 BOOL (WINAPI *ValidateRect_fn)(HWND hWnd, const RECT *lpRect) = ValidateRect;
+int (WINAPI *DrawTextExA_fn)(HDC hdc, LPTSTR lpchText, int cchText, LPRECT lprc, UINT dwDTFormat, LPDRAWTEXTPARAMS lpDTParams) = DrawTextExA;
 
 void logf(char *msg, ...)
 {
@@ -137,9 +138,6 @@ HWND WINAPI myCreateWindowEx(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWin
 
 BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString)
 {
-	char temp[1024];
-	memcpy(temp, lpString, cchString);
-	temp[cchString] = 0;
 	logf("TextOutA");
 	
 	gdi_run_invalidations();
@@ -169,6 +167,14 @@ BOOL WINAPI myValidateRect(HWND hWnd, const RECT *lpRect)
 	gdi_clear_invalidations();
 
 	return ValidateRect_fn(hWnd, lpRect);
+}
+
+int myDrawTextExA(HDC hdc, LPTSTR lpchText, int cchText, LPRECT lprc, UINT dwDTFormat, LPDRAWTEXTPARAMS lpDTParams)
+{
+	int len = cchText != -1 ? cchText : strlen(lpchText);
+	logf("DrawTextExA");
+	if (dwDTFormat != DT_WORDBREAK) gdi_write_string(hdc, lprc->left, lprc->top, lpchText, len);
+	return DrawTextExA_fn(hdc, lpchText, cchText, lprc, dwDTFormat, lpDTParams);
 }
 
 void getgdibitmap()
@@ -914,6 +920,13 @@ void InitInstance(HANDLE hModule)
 	}
 	DetourTransactionBegin();
 	DetourAttach(&(PVOID&)ValidateRect_fn, myValidateRect);
+	if(DetourTransactionCommit() != NO_ERROR)
+	{
+		logf("Could not hook ValidateRect");
+		::ExitProcess(0);
+	}
+	DetourTransactionBegin();
+	DetourAttach(&(PVOID&)DrawTextExA_fn, myDrawTextExA);
 	if(DetourTransactionCommit() != NO_ERROR)
 	{
 		logf("Could not hook ValidateRect");
