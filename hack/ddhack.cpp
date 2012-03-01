@@ -141,12 +141,11 @@ BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int 
 	memcpy(temp, lpString, cchString);
 	temp[cchString] = 0;
 	logf("TextOutA");
-
 	
 	gdi_run_invalidations();
 	gdi_write_string(hdc, nXStart, nYStart, lpString, cchString);
 
-	return 1;
+	return TextOutA_fn(hdc, nXStart, nYStart, lpString, cchString);
 }
 
 BOOL WINAPI myInvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase)
