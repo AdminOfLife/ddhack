@@ -103,7 +103,67 @@ HRESULT  __stdcall myIDDraw2::DuplicateSurface(LPDIRECTDRAWSURFACE a, LPDIRECTDR
 HRESULT  __stdcall myIDDraw2::EnumDisplayModes(DWORD a, LPDDSURFACEDESC b, LPVOID c, LPDDENUMMODESCALLBACK d)
 {
 	logf("myIDDraw2::EnumDisplayModes");
-	return DDERR_UNSUPPORTED;
+
+	// Send a bunch of modes, most modern systems should support all of these
+	
+	static int resolutions[22][2] = {
+		{640, 480},
+		{720, 480},
+		{720, 576},
+		{800, 600},
+		{1024, 768},
+		{1152, 864},
+		{1176, 664},
+		{1280, 720},
+		{1280, 768},
+		{1280, 800},
+		{1280, 960},
+		{1280, 1024},
+		{1360, 768},
+		{1366, 768},
+		{1600, 900},
+		{1600, 1024},
+		{1600, 1200},
+		{1600, 1050},
+		{1768, 992},
+		{1920, 1080},
+		{1920, 1200},
+		{NULL, NULL}
+	};
+
+	static int pixelformats[4][5] = {
+		{ 8, DDPF_RGB | DDPF_PALETTEINDEXED8, 0x00000000, 0x00000000, 0x00000000 },
+		{ 16, DDPF_RGB, 0x0000f800, 0x000007e0, 0x0000001f },
+		{ 32, DDPF_RGB, 0x00ff0000, 0x0000ff00, 0x000000ff },
+		{NULL, NULL, NULL, NULL, NULL }
+	};
+
+	for (int i = 0; ; i++)
+	{
+		if (resolutions[i][0] == NULL) break;
+
+		for (int j = 0; ; j++)
+		{
+			if (pixelformats[j][0] == NULL) break;
+
+			DDSURFACEDESC temp;
+			memset(&temp, 0, sizeof(temp));
+			temp.dwSize = sizeof(temp);
+			temp.dwFlags = DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT | DDSD_PITCH | DDSD_REFRESHRATE;
+			temp.dwWidth = resolutions[i][0];
+			temp.dwHeight = resolutions[i][1];
+			temp.lPitch = temp.dwWidth * pixelformats[j][0] / 8;
+			temp.ddpfPixelFormat.dwSize = sizeof(DDPIXELFORMAT);
+			temp.ddpfPixelFormat.dwFlags = pixelformats[j][1];
+			temp.ddpfPixelFormat.dwRGBBitCount = pixelformats[j][0];
+			temp.ddpfPixelFormat.dwRBitMask = pixelformats[j][2];
+			temp.ddpfPixelFormat.dwGBitMask = pixelformats[j][3];
+			temp.ddpfPixelFormat.dwBBitMask = pixelformats[j][4];
+			(*d)(&temp, c);
+		}
+	}
+
+	return DD_OK;
 }
 
 
@@ -117,7 +177,7 @@ HRESULT  __stdcall myIDDraw2::EnumSurfaces(DWORD a, LPDDSURFACEDESC b, LPVOID c,
 HRESULT  __stdcall myIDDraw2::FlipToGDISurface(void)
 {
 	logf("myIDDraw2::FlipToGDISurface");
-	return DDERR_UNSUPPORTED;
+	return DD_OK;
 }
 
 
@@ -131,7 +191,30 @@ HRESULT  __stdcall myIDDraw2::GetCaps(LPDDCAPS a, LPDDCAPS b)
 HRESULT  __stdcall myIDDraw2::GetDisplayMode(LPDDSURFACEDESC a)
 {
 	logf("myIDDraw2::GetDisplayMode");
-	return DDERR_UNSUPPORTED;
+	
+	static int pixelformats[4][5] = {
+		{ 8, DDPF_RGB | DDPF_PALETTEINDEXED8, 0x00000000, 0x00000000, 0x00000000 },
+		{ 16, DDPF_RGB, 0x0000f800, 0x000007e0, 0x0000001f },
+		{ 32, DDPF_RGB, 0x00ff0000, 0x0000ff00, 0x000000ff },
+		{NULL, NULL, NULL, NULL, NULL }
+	};
+
+	int j = (gScreenBits == 8) ? 0 : (gScreenBits == 16) ? 1 : (gScreenBits == 32) ? 2 : 3;
+
+	memset(a, 0, sizeof(DDSURFACEDESC));
+	a->dwSize = sizeof(DDSURFACEDESC);
+	a->dwFlags = DDSD_HEIGHT | DDSD_WIDTH | DDSD_PIXELFORMAT | DDSD_PITCH | DDSD_REFRESHRATE;
+	a->dwWidth = gScreenWidth;
+	a->dwHeight = gScreenHeight;
+	a->lPitch = gScreenWidth * gScreenBits / 8;
+	a->ddpfPixelFormat.dwSize = sizeof(DDPIXELFORMAT);
+	a->ddpfPixelFormat.dwFlags = pixelformats[j][1];
+	a->ddpfPixelFormat.dwRGBBitCount = pixelformats[j][0];
+	a->ddpfPixelFormat.dwRBitMask = pixelformats[j][2];
+	a->ddpfPixelFormat.dwGBitMask = pixelformats[j][3];
+	a->ddpfPixelFormat.dwBBitMask = pixelformats[j][4];
+
+	return DD_OK;
 }
 
 
