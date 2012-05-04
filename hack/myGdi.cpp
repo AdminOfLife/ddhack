@@ -11,7 +11,7 @@ unsigned char gdi_buffer[2048*2048*4];
 RECT invalidateRects[1024];
 int invalidateRectsCount = 0;
 
-void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString)
+void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString, LPRECT lprc, UINT dwDTFormat)
 {
 	LOGFONT lf;
 	GetObject(GetCurrentObject(hdc, OBJ_FONT), sizeof(lf), &lf);
@@ -92,7 +92,14 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 
 	UINT align = GetTextAlign(hdc);
 
-	if (align & TA_RIGHT)
+	if (lprc != NULL)
+	{
+		nXStart = lprc->left;
+		if (dwDTFormat & DT_CENTER)
+			nXStart += (lprc->right - lprc->left - totalwidth) / 2;
+		nYStart = lprc->top;
+	}
+	else if (align & TA_RIGHT)
 		nXStart -= totalwidth;
 	else if (align & TA_CENTER)
 		nXStart -= totalwidth / 2;
