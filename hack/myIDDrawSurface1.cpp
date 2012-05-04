@@ -53,6 +53,11 @@ myIDDrawSurface1::~myIDDrawSurface1(void)
 		delete gBackBuffer;
 		gBackBuffer = NULL;
 	}
+	if (this == gBackBuffer)
+	{
+		gBackBuffer = NULL;
+	}
+
 	delete[] mRealSurfaceData;
 }
 
