@@ -770,7 +770,7 @@ void init_gl()
 		MoveWindow(gHwnd, 0, -480 * (1 - gAltWinPos), gRealScreenWidth, 
 				   gRealScreenHeight + 480 * (1 - gAltWinPos), 0);
 		// Set position just in case..
-		SetWindowPos(gHwnd, NULL, 0, -480 * (1 - gAltWinPos), 0, 0, SWP_NOSIZE);
+		SetWindowPos(gHwnd, (HWND) -2, 0, -480 * (1 - gAltWinPos), 0, 0, SWP_NOSIZE);
 		gAllowResize = 0;
 
 		PIXELFORMATDESCRIPTOR pfd;
