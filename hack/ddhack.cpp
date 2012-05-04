@@ -191,7 +191,7 @@ BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int 
 	logf("TextOutA");
 	
 	gdi_run_invalidations();
-	gdi_write_string(hdc, nXStart, nYStart, lpString, cchString);
+	gdi_write_string(hdc, nXStart, nYStart, lpString, cchString, NULL, 0);
 
 	return TextOutA_fn(hdc, nXStart, nYStart, lpString, cchString);
 }
@@ -223,7 +223,10 @@ int myDrawTextExA(HDC hdc, LPTSTR lpchText, int cchText, LPRECT lprc, UINT dwDTF
 {
 	int len = cchText != -1 ? cchText : strlen(lpchText);
 	logf("DrawTextExA");
-	if (dwDTFormat != DT_WORDBREAK) gdi_write_string(hdc, lprc->left, lprc->top, lpchText, len);
+	logf(" hdc: %08x", hdc);
+	logf(" lprect: [%d,%d,%d,%d]", lprc->top, lprc->right, lprc->bottom, lprc->left);
+	logf(" dwDTFormat: %08x", dwDTFormat);
+	if (dwDTFormat != DT_WORDBREAK) gdi_write_string(hdc, 0, 0, lpchText, len, lprc, dwDTFormat);
 	return DrawTextExA_fn(hdc, lpchText, cchText, lprc, dwDTFormat, lpDTParams);
 }
 
@@ -709,7 +712,7 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		logf("winproc: too long since last update");
 		updatescreen();
 	}
-
+	logf("winproc: %08x", uMsg);
 	//SetCapture(hWnd); // causes horrible input lag, so let's not use it
 	switch (uMsg)
 	{
@@ -780,7 +783,13 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	}
 
 	// Pass control to the application..
-	return origfunc(hWnd, uMsg, wParam, lParam);
+	if (gRunBackground && (
+		(uMsg == WM_ACTIVATE && wParam == 0) ||
+		(uMsg == WM_ACTIVATEAPP && wParam == FALSE) ||
+		(uMsg == WM_KILLFOCUS)))
+		return 0;
+	else
+		return origfunc(hWnd, uMsg, wParam, lParam);
 }
 
 void init_gl()
@@ -1053,6 +1062,7 @@ void InitInstance(HANDLE hModule)
 	gIgnoreAspect=INI_READ_INT("Rendering","ignore_aspect_ratio",0);
 	gVsync=INI_READ_INT("Rendering","vsync",0);
 	gSoftCursor=INI_READ_INT("Rendering","softcursor",0);
+	gRunBackground=INI_READ_INT("Rendering","run_background",0);
 
 
 	// Init some defaults..
