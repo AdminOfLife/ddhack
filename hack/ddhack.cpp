@@ -116,6 +116,7 @@ int xPos = 0;
 int yPos = 0;
 int gSoftCursor = 0;
 int gCursorHidden = 0;
+int gRunBackground = 0;
 int gNoShaders = 0;
 unsigned int temp[2048*2048];
 GLuint shader_id;
