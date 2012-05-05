@@ -141,7 +141,6 @@ BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int 
 {
 	logf("TextOutA");
 	
-	//gdi_run_invalidations();
 	gdi_write_string(hdc, nXStart, nYStart, lpString, cchString, NULL, 0);
 
 	return TextOutA_fn(hdc, nXStart, nYStart, lpString, cchString);
@@ -155,7 +154,12 @@ BOOL WINAPI myInvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase)
 		logf(" [%d,%d,%d,%d]", lpRect->left, lpRect->top, lpRect->right, lpRect->bottom);
 	}
 
-	gdi_invalidate(hWnd, lpRect);
+	if (!hWnd || hWnd != gHwnd)
+		{} // do nothing
+	else if (bErase)
+		gdi_clear(lpRect);
+	else
+		gdi_invalidate(lpRect);
 
 	return InvalidateRect_fn(hWnd, lpRect, bErase);
 }
@@ -163,6 +167,15 @@ BOOL WINAPI myInvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase)
 BOOL WINAPI myValidateRect(HWND hWnd, const RECT *lpRect)
 {
 	logf("ValidateRect");
+	if (lpRect)
+	{
+		logf(" [%d,%d,%d,%d]", lpRect->left, lpRect->top, lpRect->right, lpRect->bottom);
+	}
+
+	if (!hWnd || hWnd != gHwnd)
+		{} // do nothing
+	else
+		gdi_clear_invalidations();
 
 	return ValidateRect_fn(hWnd, lpRect);
 }
@@ -170,11 +183,15 @@ BOOL WINAPI myValidateRect(HWND hWnd, const RECT *lpRect)
 int myDrawTextExA(HDC hdc, LPTSTR lpchText, int cchText, LPRECT lprc, UINT dwDTFormat, LPDRAWTEXTPARAMS lpDTParams)
 {
 	int len = cchText != -1 ? cchText : strlen(lpchText);
+	char word[1024];
 	logf("DrawTextExA");
 	logf(" hdc: %08x", hdc);
 	logf(" lprect: [%d,%d,%d,%d]", lprc->top, lprc->right, lprc->bottom, lprc->left);
 	logf(" dwDTFormat: %08x", dwDTFormat);
-	if (dwDTFormat != DT_WORDBREAK) gdi_write_string(hdc, 0, 0, lpchText, len, lprc, dwDTFormat);
+	memcpy(word, lpchText, len);
+	word[len] = 0;
+	logf(" lpchText: %s", word);
+	if (!(dwDTFormat & DT_WORDBREAK)) gdi_write_string(hdc, 0, 0, lpchText, len, lprc, dwDTFormat);
 	return DrawTextExA_fn(hdc, lpchText, cchText, lprc, dwDTFormat, lpDTParams);
 }
 
@@ -753,6 +770,9 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			p->flags |= SWP_NOSIZE | SWP_NOMOVE;
 			return 0;		
 		}
+		break;
+	case WM_PAINT:
+		gdi_run_invalidations();
 		break;
 	}
 

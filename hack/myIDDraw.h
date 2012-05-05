@@ -213,7 +213,7 @@ public:
 	virtual int getPitch() const { return mPitch; }
 	virtual bool isTextBuffer() const { return mIsTextBuffer; }
 	virtual void setTextBuffer() { mIsTextBuffer = true; }
-	virtual void clearGdi() { memset(mGdiBuffer, 0, mHeight * mPitch); }
+	virtual void clearGdi() { memset(mGdiBuffer, 0, mHeight * mWidth * 4); }
 
 	DDSURFACEDESC mSurfaceDesc;
 	DDCOLORKEY mSrcColorKey;
@@ -305,7 +305,7 @@ public:
 	virtual int getPitch() const { return mPitch; }
 	virtual bool isTextBuffer() const { return mIsTextBuffer; }
 	virtual void setTextBuffer() { mIsTextBuffer = true; }
-	virtual void clearGdi() { memset(mGdiBuffer, 0, mHeight * mPitch); }
+	virtual void clearGdi() { memset(mGdiBuffer, 0, mHeight * mWidth * 4); }
 
 	DDSURFACEDESC2 mSurfaceDesc;
 	DDCOLORKEY mSrcColorKey;

@@ -7,6 +7,9 @@
 std::hash_map<std::string, int> kernings;
 std::unordered_set<std::string> calculated;
 
+RECT invalidateRects[1024];
+int invalidateRectsCount = 0;
+
 void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString, LPRECT lprc, UINT dwDTFormat)
 {
 	if (open_dcs.find(hdc) == open_dcs.end())
@@ -77,7 +80,7 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 		calculated.insert(kerningstring);
 	}
 
-	int totalwidth = 0;
+	int totalwidth = 0, totalheight = 0;
 
 	for (i = 0; i < cchString; i++)
 	{
@@ -94,16 +97,18 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 		if (lc && kernings.find(ks) != kernings.end())
 		{
 			kerns[i] = kernings[ks];
-			totalwidth += kerns[i];
 		}
 		else
 		{
 			kerns[i] = 0;
 		}
-		totalwidth += gms[i].gmCellIncX;
 		lc = lpString[i];
 	}
 
+	SIZE s;
+	GetTextExtentPoint32(hdc, lpString, cchString, &s);
+	totalwidth = s.cx;
+	totalheight = s.cy;
 	UINT align = GetTextAlign(hdc);
 
 	if (lprc != NULL)
@@ -112,6 +117,8 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 		if (dwDTFormat & DT_CENTER)
 			nXStart += (lprc->right - lprc->left - totalwidth) / 2;
 		nYStart += lprc->top;
+		if (dwDTFormat & DT_BOTTOM)
+			nYStart += (lprc->bottom - lprc->top - totalheight);
 	}
 	else if (align & TA_RIGHT)
 		nXStart -= totalwidth;
@@ -144,17 +151,40 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 	delete [] kerns;
 }
 
-void gdi_invalidate(const HWND hWnd, const RECT *lpRect)
+void gdi_clear(const RECT *lpRect)
 {
 	if (tex_w == 0 || tex_h == 0)
 		return;
 	if (lpRect == NULL)
 	{
-		//for(std::unordered_set<myIDDrawSurface_Generic *>::iterator it = full_surfaces.begin(); it != full_surfaces.end(); it++)
-		//	memset((*it)->getGdiBuffer(), 0, tex_w * tex_h * 4);
+		for(std::unordered_set<myIDDrawSurface_Generic *>::iterator it = full_surfaces.begin(); it != full_surfaces.end(); it++)
+			memset((*it)->getGdiBuffer(), 0, tex_w * tex_h * 4);
 		return;
 	}
 	for(std::unordered_set<myIDDrawSurface_Generic *>::iterator it = full_surfaces.begin(); it != full_surfaces.end(); it++)
 		for (int i = lpRect->top; i <= lpRect->bottom; i++)
 			memset(&(*it)->getGdiBuffer()[(i * tex_w + lpRect->left) * 4], 0, (lpRect->right - lpRect->left) * 4);
+}
+
+void gdi_invalidate(const RECT *lpRect)
+{
+	if (lpRect == 0)
+		return;
+	if (invalidateRectsCount >= 1024)
+		return;
+	memcpy(&invalidateRects[invalidateRectsCount++], lpRect, sizeof(RECT));
+}
+
+void gdi_run_invalidations()
+{
+	if (invalidateRectsCount)
+		for (;invalidateRectsCount >= 0; --invalidateRectsCount)
+			gdi_clear(&invalidateRects[invalidateRectsCount]);
+
+	gdi_clear_invalidations();
+}
+
+void gdi_clear_invalidations()
+{
+	invalidateRectsCount = 0;
 }

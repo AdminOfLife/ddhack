@@ -157,6 +157,7 @@ HRESULT  __stdcall myIDDrawSurface1::Blt(LPRECT a,LPDIRECTDRAWSURFACE b, LPRECT 
 	int i, j;
 	myIDDrawSurface1 *src = NULL;
 	if (b) src = (myIDDrawSurface1*)b;
+	if (src && src->isTextBuffer()) this->setTextBuffer();
 	int usingColorKey = d & DDBLT_KEYDEST || d & DDBLT_KEYSRC || d & DDBLT_ALPHADEST;
 	unsigned char colorKey = 0;
 	if (usingColorKey)
@@ -362,6 +363,7 @@ HRESULT  __stdcall myIDDrawSurface1::GetDC(HDC FAR *a)
 	logf("myIDDrawSurface1::GetDC(%08x)", this);
 	*a = GetDC2(gHwnd);
 	open_dcs[*a] = this;
+	//if(full_surfaces.find(this) == full_surfaces.end()) clearGdi();
 	logf(" hdc: %08x", *a);
 	return DD_OK;
 }
