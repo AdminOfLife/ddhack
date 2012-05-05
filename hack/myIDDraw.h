@@ -1,12 +1,14 @@
 #pragma once
 
-inline HDC GetDC2(HWND hWnd)
-{
-	return GetDC(hWnd);
-}
+#include <hash_map>
+#include <unordered_set>
 
+class myIDDrawSurface_Generic;
 class myIDDrawPalette;
 class myIDDrawClipper;
+
+extern std::hash_map<HDC, myIDDrawSurface_Generic*> open_dcs;
+extern std::unordered_set<myIDDrawSurface_Generic*> full_surfaces;
 
 class myIDDraw1 : public IDirectDraw
 {
@@ -124,13 +126,38 @@ public:
     HRESULT  __stdcall EvaluateMode(DWORD a, DWORD *b);
 };
 
+class myIDDrawPalette : public IDirectDrawPalette
+{
+public:
+    myIDDrawPalette(DWORD a, LPPALETTEENTRY b);
+    virtual ~myIDDrawPalette(void);
+
+	// The original DDraw function definitions BEGIN
+    HRESULT __stdcall QueryInterface (REFIID a, LPVOID FAR * b);
+    ULONG   __stdcall AddRef(void);
+    ULONG   __stdcall Release(void);
+    
+    /*** IDirectDrawPalette methods ***/
+    HRESULT  __stdcall GetCaps(LPDWORD);
+    HRESULT  __stdcall GetEntries(DWORD,DWORD,DWORD,LPPALETTEENTRY);
+    HRESULT  __stdcall Initialize(LPDIRECTDRAW, DWORD, LPPALETTEENTRY);
+    HRESULT  __stdcall SetEntries(DWORD,DWORD,DWORD,LPPALETTEENTRY);
+
+	PALETTEENTRY mPal[256];
+};
+
 class myIDDrawSurface_Generic
 {
 	public:
 	virtual ~myIDDrawSurface_Generic() {};
 	virtual myIDDrawPalette *getCurrentPalette() const = 0;
 	virtual unsigned char * getSurfaceData() const = 0;
+	virtual unsigned char * getGdiBuffer() const = 0;
+	virtual int getWidth() const = 0;
 	virtual int getPitch() const = 0;
+	virtual bool isTextBuffer() const = 0;
+	virtual void setTextBuffer() = 0;
+	virtual void clearGdi() = 0;
 };
 
 class myIDDrawSurface1 : public IDirectDrawSurface, public myIDDrawSurface_Generic
@@ -181,7 +208,12 @@ public:
 	
 	virtual myIDDrawPalette *getCurrentPalette() const { return mCurrentPalette; }
 	virtual unsigned char * getSurfaceData() const { return mSurfaceData; }
+	virtual unsigned char * getGdiBuffer() const { return (unsigned char *) mGdiBuffer; }
+	virtual int getWidth() const { return mWidth; }
 	virtual int getPitch() const { return mPitch; }
+	virtual bool isTextBuffer() const { return mIsTextBuffer; }
+	virtual void setTextBuffer() { mIsTextBuffer = true; }
+	virtual void clearGdi() { memset(mGdiBuffer, 0, mHeight * mPitch); }
 
 	DDSURFACEDESC mSurfaceDesc;
 	DDCOLORKEY mSrcColorKey;
@@ -191,9 +223,12 @@ public:
 	myIDDrawClipper *mClipper;
 	unsigned char * mSurfaceData;
 	unsigned char * mRealSurfaceData;
+	unsigned int * mGdiBuffer;
+	unsigned int * mRealGdiBuffer;
 	int mWidth;
 	int mHeight;
 	int mPitch;
+	bool mIsTextBuffer;
 };
 
 class myIDDrawSurface7 : public IDirectDrawSurface7, public myIDDrawSurface_Generic
@@ -265,7 +300,12 @@ public:
 
 	virtual myIDDrawPalette *getCurrentPalette() const { return mCurrentPalette; }
 	virtual unsigned char * getSurfaceData() const { return mSurfaceData; }
+	virtual unsigned char * getGdiBuffer() const { return (unsigned char *) mGdiBuffer; }
+	virtual int getWidth() const { return mWidth; }
 	virtual int getPitch() const { return mPitch; }
+	virtual bool isTextBuffer() const { return mIsTextBuffer; }
+	virtual void setTextBuffer() { mIsTextBuffer = true; }
+	virtual void clearGdi() { memset(mGdiBuffer, 0, mHeight * mPitch); }
 
 	DDSURFACEDESC2 mSurfaceDesc;
 	DDCOLORKEY mSrcColorKey;
@@ -275,29 +315,12 @@ public:
 	myIDDrawClipper *mClipper;
 	unsigned char * mSurfaceData;
 	unsigned char * mRealSurfaceData;
+	unsigned int * mGdiBuffer;
+	unsigned int * mRealGdiBuffer;
 	int mWidth;
 	int mHeight;
 	int mPitch;
-};
-
-class myIDDrawPalette : public IDirectDrawPalette
-{
-public:
-    myIDDrawPalette(DWORD a, LPPALETTEENTRY b);
-    virtual ~myIDDrawPalette(void);
-
-	// The original DDraw function definitions BEGIN
-    HRESULT __stdcall QueryInterface (REFIID a, LPVOID FAR * b);
-    ULONG   __stdcall AddRef(void);
-    ULONG   __stdcall Release(void);
-    
-    /*** IDirectDrawPalette methods ***/
-    HRESULT  __stdcall GetCaps(LPDWORD);
-    HRESULT  __stdcall GetEntries(DWORD,DWORD,DWORD,LPPALETTEENTRY);
-    HRESULT  __stdcall Initialize(LPDIRECTDRAW, DWORD, LPPALETTEENTRY);
-    HRESULT  __stdcall SetEntries(DWORD,DWORD,DWORD,LPPALETTEENTRY);
-
-	PALETTEENTRY mPal[256];
+	bool mIsTextBuffer;
 };
 
 class myIDDrawClipper : public IDirectDrawClipper
@@ -321,3 +344,5 @@ public:
 	
 	HWND mHwnd;
 };
+
+unsigned char gdi_get_palette(unsigned int color, myIDDrawPalette *pal);

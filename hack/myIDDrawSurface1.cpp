@@ -1,11 +1,13 @@
 #include "StdAfx.h"
 #include <varargs.h>
+#include <unordered_set>
 
+std::hash_map<HDC, myIDDrawSurface_Generic*> open_dcs;
+std::unordered_set<myIDDrawSurface_Generic*> full_surfaces;
 
 myIDDrawSurface1::myIDDrawSurface1(LPDDSURFACEDESC a)
 {
-	logf("myIDDrawSurface1 Constructor");
-
+	bool is_main = false;
 	mWidth = gScreenWidth;
 	mHeight = gScreenHeight;
 	mSurfaceDesc = *a;
@@ -14,7 +16,6 @@ myIDDrawSurface1::myIDDrawSurface1(LPDDSURFACEDESC a)
 	if (a->dwFlags & DDSD_WIDTH) mWidth = a->dwWidth;
 	if (a->dwFlags & DDSD_HEIGHT) mHeight = a->dwHeight;
 	// we don't need no stinking extra pitch bytes..
-	mPitch = mWidth * gScreenBits / 8;
 	
 	if (a->dwFlags & DDSD_PITCH) mPitch = a->lPitch;
 	if (a->dwFlags & DDSD_CAPS)
@@ -23,8 +24,14 @@ myIDDrawSurface1::myIDDrawSurface1(LPDDSURFACEDESC a)
 		{
 			gPrimarySurface = this;
 			init_gl();
+			is_main = true;
 		}
 	}
+
+	if (mWidth == gScreenWidth && mHeight == gScreenHeight)
+		full_surfaces.emplace(this);
+	
+	mPitch = mWidth * gScreenBits / 8;
 
 	mSurfaceDesc.dwWidth = mWidth;
 	mSurfaceDesc.dwHeight = mHeight;
@@ -36,9 +43,17 @@ myIDDrawSurface1::myIDDrawSurface1(LPDDSURFACEDESC a)
 	// (we have enough trouble being stable as it is)
 	mRealSurfaceData = new unsigned char[mHeight * mPitch + 2 * 1024 * 1024];
 	mSurfaceData = mRealSurfaceData + 1024 * 1024 * 1;
+	
+	mRealGdiBuffer = new unsigned int[mHeight * mWidth + 1024 * 16];
+	mGdiBuffer = mRealGdiBuffer + 1024 * 8;
+
 	memset(mSurfaceData, 0, mHeight * mPitch);
+	memset(mGdiBuffer, 0, mHeight * mWidth * 4);
 
 	mCurrentPalette = NULL;
+	mIsTextBuffer = false;
+
+	logf("myIDDrawSurface1 Constructor: %08x%s", this, is_main ? " primary" : "");
 }
 
 
@@ -58,6 +73,12 @@ myIDDrawSurface1::~myIDDrawSurface1(void)
 	}
 
 	delete[] mRealSurfaceData;
+	delete[] mRealGdiBuffer;
+
+	if (full_surfaces.find(this) != full_surfaces.end())
+	{
+		full_surfaces.erase(this);
+	}
 }
 
 
@@ -132,7 +153,7 @@ HRESULT  __stdcall myIDDrawSurface1::Blt(LPRECT a,LPDIRECTDRAWSURFACE b, LPRECT 
 			b,
 			d,
 			e ? e->dwDDFX : 0);
-
+	std::hash_map<unsigned int, unsigned char> colors;
 	int i, j;
 	myIDDrawSurface1 *src = NULL;
 	if (b) src = (myIDDrawSurface1*)b;
@@ -167,15 +188,33 @@ HRESULT  __stdcall myIDDrawSurface1::Blt(LPRECT a,LPDIRECTDRAWSURFACE b, LPRECT 
 			{
 				for (i = 0; i < a->bottom - a->top; i++)
 					for (j = 0; j < a->right - a->left; j++)
+					{
 						if (!usingColorKey || src->mSurfaceData[(i + c->top) * src->mPitch + j + c->left] != colorKey)
-							mSurfaceData[(i + a->top) * mPitch + j + a->left] = src->mSurfaceData[(i + c->top) * src->mPitch + j + c->left];		
+						{
+							mSurfaceData[(i + a->top) * mPitch + j + a->left] = src->mSurfaceData[(i + c->top) * src->mPitch + j + c->left];
+						}
+
+						if (src->isTextBuffer())
+						{
+							mGdiBuffer[(i + a->top) * mWidth + j + a->left] = src->mGdiBuffer[(i + c->top) * src->mWidth + j + c->left];
+						}
+					}
 			}
 			else
 			{
 				for (i = 0; i < mHeight; i++)
 					for (j = 0; j < mWidth; j++)
+					{
 						if (!usingColorKey || src->mSurfaceData[i * src->mPitch + j] != colorKey)
+						{
 							mSurfaceData[i * mPitch + j] = src->mSurfaceData[i * src->mPitch + j];
+						}
+						
+						if (src->isTextBuffer())
+						{
+							mGdiBuffer[i * mWidth + j] = src->mGdiBuffer[i * src->mWidth + j];
+						}
+					}
 			}
 		}
 	}
@@ -320,8 +359,10 @@ HRESULT  __stdcall myIDDrawSurface1::GetColorKey(DWORD a, LPDDCOLORKEY b)
 
 HRESULT  __stdcall myIDDrawSurface1::GetDC(HDC FAR *a)
 {
-	logf("myIDDrawSurface1::GetDC");
+	logf("myIDDrawSurface1::GetDC(%08x)", this);
 	*a = GetDC2(gHwnd);
+	open_dcs[*a] = this;
+	logf(" hdc: %08x", *a);
 	return DD_OK;
 }
 
@@ -356,7 +397,8 @@ HRESULT  __stdcall myIDDrawSurface1::GetPixelFormat(LPDDPIXELFORMAT a)
 {
 	logf("myIDDrawSurface1::GetPixelFormat");
 	// Return codes based on what ddwrapper reported..
-	if (gScreenBits == 8)
+	int bits = mPitch / mWidth;
+	if (bits == 1)
 	{
 		a->dwSize = 0x20;
 		a->dwFlags = 0x60;
@@ -368,7 +410,7 @@ HRESULT  __stdcall myIDDrawSurface1::GetPixelFormat(LPDDPIXELFORMAT a)
 		a->dwRGBAlphaBitMask = 0;
 	}
 	else
-	if (gScreenBits == 16)
+	if (bits == 2)
 	{
 		a->dwSize = 0x20;
 		a->dwFlags = 0x40;
@@ -380,7 +422,7 @@ HRESULT  __stdcall myIDDrawSurface1::GetPixelFormat(LPDDPIXELFORMAT a)
 		a->dwRGBAlphaBitMask = 0;
 	}
 	else
-	if (gScreenBits == 24)
+	if (bits == 4)
 	{
 		a->dwSize = 0x20;
 		a->dwFlags = 0x40;
@@ -402,7 +444,8 @@ HRESULT  __stdcall myIDDrawSurface1::GetSurfaceDesc(LPDDSURFACEDESC a)
 		a->dwSize, a->dwFlags, a->dwWidth, a->dwHeight, a->lPitch, a->dwBackBufferCount,
 		a->lpSurface, a->ddsCaps.dwCaps);
 	*a = mSurfaceDesc;
-	if (gScreenBits == 8)
+	int bits = mPitch / mWidth;
+	if (bits == 1)
 	{
 		a->ddpfPixelFormat.dwSize = 0x20;
 		a->ddpfPixelFormat.dwFlags = 0x60;
@@ -414,7 +457,7 @@ HRESULT  __stdcall myIDDrawSurface1::GetSurfaceDesc(LPDDSURFACEDESC a)
 		a->ddpfPixelFormat.dwRGBAlphaBitMask = 0;
 	}
 	else
-	if (gScreenBits == 16)
+	if (bits == 2)
 	{
 		a->ddpfPixelFormat.dwSize = 0x20;
 		a->ddpfPixelFormat.dwFlags = 0x40;
@@ -426,12 +469,12 @@ HRESULT  __stdcall myIDDrawSurface1::GetSurfaceDesc(LPDDSURFACEDESC a)
 		a->ddpfPixelFormat.dwRGBAlphaBitMask = 0;
 	}
 	else
-	if (gScreenBits == 24)
+	if (bits == 4)
 	{
 		a->ddpfPixelFormat.dwSize = 0x20;
 		a->ddpfPixelFormat.dwFlags = 0x40;
 		a->ddpfPixelFormat.dwFourCC = 0;
-		a->ddpfPixelFormat.dwRGBBitCount = 24;
+		a->ddpfPixelFormat.dwRGBBitCount = 32;
 		a->ddpfPixelFormat.dwRBitMask = 0xff0000;
 		a->ddpfPixelFormat.dwGBitMask = 0x00ff00;
 		a->ddpfPixelFormat.dwBBitMask = 0x0000ff;
@@ -492,6 +535,8 @@ HRESULT  __stdcall myIDDrawSurface1::Lock(LPRECT a,LPDDSURFACEDESC b,DWORD aFlag
 HRESULT  __stdcall myIDDrawSurface1::ReleaseDC(HDC a)
 {
 	logf("myIDDrawSurface1::ReleaseDC");
+	DeleteDC(a);
+	open_dcs.erase(a);
 	return DD_OK;
 }
 

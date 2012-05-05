@@ -1,5 +1,15 @@
 #pragma once
 
+inline HDC GetDC2(HWND hWnd)
+{
+	return GetDC(hWnd);
+}
+
+inline int ReleaseDC2(HWND hWnd, HDC hDc)
+{
+	return ReleaseDC(hWnd, hDc);
+}
+
 class myIDDrawSurface_Generic;
 
 // global variables

@@ -7,14 +7,28 @@
 std::hash_map<std::string, int> kernings;
 std::unordered_set<std::string> calculated;
 
-unsigned char gdi_buffer[2048*2048*4];
-RECT invalidateRects[1024];
-int invalidateRectsCount = 0;
-
 void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString, LPRECT lprc, UINT dwDTFormat)
 {
+	if (open_dcs.find(hdc) == open_dcs.end())
+		return;
+	open_dcs[hdc]->setTextBuffer();
 	LOGFONT lf;
 	GetObject(GetCurrentObject(hdc, OBJ_FONT), sizeof(lf), &lf);
+	// hack: draw child window text to parent, calculate offset here
+	HWND hWnd = WindowFromDC(hdc);
+	logf("gdi_write_string");
+	logf("hWdc: %08x", hWnd);
+	if (hWnd != NULL)
+	{
+		POINT p1 = {0}, p2 = {0};
+		GetViewportOrgEx(hdc, &p1);
+		GetViewportOrgEx(GetDC(gHwnd), &p2);
+		nXStart += p1.x - p2.x;
+		nYStart += p1.y - p2.y;
+	}
+	logf("newX: %3d, newY: %3d", nXStart, nYStart);
+	logf("");
+
 	int height = lf.lfHeight < 0 ? -lf.lfHeight : lf.lfHeight;
 	COLORREF c = GetTextColor(hdc);
 	MAT2 m2;
@@ -94,10 +108,10 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 
 	if (lprc != NULL)
 	{
-		nXStart = lprc->left;
+		nXStart += lprc->left;
 		if (dwDTFormat & DT_CENTER)
 			nXStart += (lprc->right - lprc->left - totalwidth) / 2;
-		nYStart = lprc->top;
+		nYStart += lprc->top;
 	}
 	else if (align & TA_RIGHT)
 		nXStart -= totalwidth;
@@ -112,13 +126,14 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 		for (DWORD j = 0; j < gms[i].gmBlackBoxX; j++)
 			for (DWORD k = 0; k < gms[i].gmBlackBoxY; k++)
 			{
-				unsigned char pixel = ((buffers[i][(k * pitch) + (j / 8)] >> ((7 - (j + 8)) & 7)) & 1) * 0xFF;
+				unsigned char pixel= ((buffers[i][(k * pitch) + (j / 8)] >> ((7 - (j + 8)) & 7)) & 1) * 0xFF;
 				if (!pixel) continue;
-				int gdi_offset = (tex_w * (k + nYStart - gms[i].gmptGlyphOrigin.y + height) + (j + nXStart)) * 4;
-				gdi_buffer[gdi_offset] = (unsigned char) (pixel * ((c & 0x000000FF) / 255.f));
-				gdi_buffer[gdi_offset + 1] = (unsigned char) (pixel * (((c & 0x0000FF00) >> 8) / 255.f));
-				gdi_buffer[gdi_offset + 2] = (unsigned char) (pixel * (((c & 0x00FF0000) >> 16) / 255.f));
-				gdi_buffer[gdi_offset + 3] = pixel;
+				int gdi_offset = (open_dcs[hdc]->getWidth() * (k + nYStart - gms[i].gmptGlyphOrigin.y + height) + (j + nXStart)) * 4;
+				unsigned char *dest = open_dcs[hdc]->getGdiBuffer();
+				dest[gdi_offset] = (unsigned char) (pixel * ((c & 0x000000FF) / 255.f));
+				dest[gdi_offset + 1] = (unsigned char) (pixel * (((c & 0x0000FF00) >> 8) / 255.f));
+				dest[gdi_offset + 2] = (unsigned char) (pixel * (((c & 0x00FF0000) >> 16) / 255.f));
+				dest[gdi_offset + 3] = pixel;
 			}
 
 		delete [] buffers[i];
@@ -129,46 +144,17 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 	delete [] kerns;
 }
 
-void gdi_clear(const RECT *lpRect)
+void gdi_invalidate(const HWND hWnd, const RECT *lpRect)
 {
 	if (tex_w == 0 || tex_h == 0)
 		return;
-	if (lpRect == 0)
+	if (lpRect == NULL)
+	{
+		//for(std::unordered_set<myIDDrawSurface_Generic *>::iterator it = full_surfaces.begin(); it != full_surfaces.end(); it++)
+		//	memset((*it)->getGdiBuffer(), 0, tex_w * tex_h * 4);
 		return;
-	for (int i = lpRect->top; i <= lpRect->bottom; i++)
-		memset(&gdi_buffer[(i * tex_w + lpRect->left) * 4], 0, (lpRect->right - lpRect->left) * 4);
-}
-
-void gdi_clear_all()
-{
-	invalidateRectsCount = 0;
-	memset(gdi_buffer, 0, 2048*2048*4);
-}
-
-unsigned char *gdi_get_buffer()
-{
-	return gdi_buffer;
-}
-
-void gdi_invalidate(const RECT *lpRect)
-{
-	if (lpRect == 0)
-		return;
-	if (invalidateRectsCount >= 1024)
-		return;
-	memcpy(&invalidateRects[invalidateRectsCount++], lpRect, sizeof(RECT));
-}
-
-void gdi_run_invalidations()
-{
-	if (invalidateRectsCount)
-		for (;invalidateRectsCount >= 0; --invalidateRectsCount)
-			gdi_clear(&invalidateRects[invalidateRectsCount]);
-
-	gdi_clear_invalidations();
-}
-
-void gdi_clear_invalidations()
-{
-	invalidateRectsCount = 0;
+	}
+	for(std::unordered_set<myIDDrawSurface_Generic *>::iterator it = full_surfaces.begin(); it != full_surfaces.end(); it++)
+		for (int i = lpRect->top; i <= lpRect->bottom; i++)
+			memset(&(*it)->getGdiBuffer()[(i * tex_w + lpRect->left) * 4], 0, (lpRect->right - lpRect->left) * 4);
 }

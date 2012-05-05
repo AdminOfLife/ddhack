@@ -141,7 +141,7 @@ BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int 
 {
 	logf("TextOutA");
 	
-	gdi_run_invalidations();
+	//gdi_run_invalidations();
 	gdi_write_string(hdc, nXStart, nYStart, lpString, cchString, NULL, 0);
 
 	return TextOutA_fn(hdc, nXStart, nYStart, lpString, cchString);
@@ -150,13 +150,12 @@ BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int 
 BOOL WINAPI myInvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase)
 {
 	logf("InvalidateRect");
+	if (lpRect)
+	{
+		logf(" [%d,%d,%d,%d]", lpRect->left, lpRect->top, lpRect->right, lpRect->bottom);
+	}
 
-	if (!hWnd)
-		{} // do nothing
-	else if (bErase)
-		gdi_clear(lpRect);
-	else
-		gdi_invalidate(lpRect);
+	gdi_invalidate(hWnd, lpRect);
 
 	return InvalidateRect_fn(hWnd, lpRect, bErase);
 }
@@ -164,8 +163,6 @@ BOOL WINAPI myInvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase)
 BOOL WINAPI myValidateRect(HWND hWnd, const RECT *lpRect)
 {
 	logf("ValidateRect");
-
-	gdi_clear_invalidations();
 
 	return ValidateRect_fn(hWnd, lpRect);
 }
@@ -626,7 +623,33 @@ void updatescreen()
 
 	}
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_w, tex_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, gdi_get_buffer());
+	/*glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_w, tex_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, gdi_get_buffer());
+	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND);
+	glColor3f(1.0f,1.0f,1.0f); 
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	if (gIgnoreAspect)
+	{
+		w = (float)gScreenWidth / (float)tex_w;
+		h = (float)gScreenHeight / (float)tex_h;
+		glBegin(GL_TRIANGLE_FAN);
+		glTexCoord2f(0,0);              glVertex2f(-1,  1);
+		glTexCoord2f(w,0);        glVertex2f( 1,  1);
+		glTexCoord2f(w,h);  glVertex2f( 1, -1); 
+		glTexCoord2f(0,h);        glVertex2f(-1, -1);
+		glEnd();
+	}
+	else
+	{
+		glBegin(GL_TRIANGLE_FAN);
+		glTexCoord2f(0,0); glVertex2f( -w,  h);
+		glTexCoord2f(u,0); glVertex2f(  w,  h);
+		glTexCoord2f(u,v); glVertex2f(  w, -h); 
+		glTexCoord2f(0,v); glVertex2f( -w, -h);
+		glEnd();
+	}*/
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex_w, tex_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, gPrimarySurface->getGdiBuffer());
 	glEnable(GL_TEXTURE_2D);
 	glEnable(GL_BLEND);
 	glColor3f(1.0f,1.0f,1.0f); 
@@ -837,7 +860,7 @@ void init_gl()
 	r.right = gScreenWidth;
 	ClipCursor(&r);
 	
-	gdi_clear_all();
+//	gdi_clear_all();
 }
 
 BOOL APIENTRY DllMain( HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
