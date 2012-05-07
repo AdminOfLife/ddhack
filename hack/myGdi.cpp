@@ -1,22 +1,31 @@
 #include "stdafx.h"
 #include "myGdi.h"
+#include "fixed.h"
+
 #include <string>
 #include <hash_map>
-#include <unordered_set>
-
-std::hash_map<std::string, int> kernings;
-std::unordered_set<std::string> calculated;
-
-RECT invalidateRects[1024];
-int invalidateRectsCount = 0;
 
 void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString, LPRECT lprc, UINT dwDTFormat)
 {
 	if (open_dcs.find(hdc) == open_dcs.end())
 		return;
-	open_dcs[hdc]->setTextBuffer();
+	std::hash_map<short, int> kernings;
+	char lc = 0;
+	MAT2 m2;
+	m2.eM11.fract = 0;
+	m2.eM11.value = 1;
+	m2.eM12.fract = 0;
+	m2.eM12.value = 0;
+	m2.eM21.fract = 0;
+	m2.eM21.value = 0;
+	m2.eM22.fract = 0;
+	m2.eM22.value = 1;
+	GLYPHMETRICS t;
 	LOGFONT lf;
 	GetObject(GetCurrentObject(hdc, OBJ_FONT), sizeof(lf), &lf);
+	COLORREF c = GetTextColor(hdc);
+	if (GetGlyphOutline(hdc, 'A', GGO_BITMAP, &t, 0, 0, &m2) == GDI_ERROR)
+		goto fallback;
 	// hack: draw child window text to parent, calculate offset here
 	HWND hWnd = WindowFromDC(hdc);
 	logf("gdi_write_string");
@@ -30,81 +39,44 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 		nYStart += p1.y - p2.y;
 	}
 	logf("newX: %3d, newY: %3d", nXStart, nYStart);
-	logf("");
 
 	int height = lf.lfHeight < 0 ? -lf.lfHeight : lf.lfHeight;
-	COLORREF c = GetTextColor(hdc);
-	MAT2 m2;
-	m2.eM11.fract = 0;
-	m2.eM11.value = 1;
-	m2.eM12.fract = 0;
-	m2.eM12.value = 0;
-	m2.eM21.fract = 0;
-	m2.eM21.value = 0;
-	m2.eM22.fract = 0;
-	m2.eM22.value = 1;
-	char lc = 0;
 	unsigned char **buffers = new unsigned char*[cchString];
 	GLYPHMETRICS *gms = new GLYPHMETRICS[cchString];
 	int *kerns = new int[cchString];
 	int i;
-	std::string kerningstring = std::string(lf.lfFaceName);
-	kerningstring += (char) lf.lfWidth + 1;
-	kerningstring += (char) lf.lfHeight + 1;
-	kerningstring += (char) lf.lfWeight / 100 + 1;
-	kerningstring += lf.lfItalic + 1;
+	logf(" facename: %s", lf.lfFaceName);
 
 	// get kerning pairs
-	if (calculated.find(kerningstring) == calculated.end())
+	int numpairs = GetKerningPairs(hdc, 0, 0);
+
+	if (numpairs)
 	{
-		int numpairs = GetKerningPairs(hdc, 0, 0);
+		KERNINGPAIR *pairs = new KERNINGPAIR[numpairs];
+		GetKerningPairs(hdc, numpairs, pairs);
 
-		if (numpairs)
+		for (int i = 0; i < numpairs; i++)
 		{
-			KERNINGPAIR *pairs = new KERNINGPAIR[numpairs];
-			GetKerningPairs(hdc, numpairs, pairs);
-
-			for (int i = 0; i < numpairs; i++)
-			{
-				if (pairs[i].wFirst > 255 || pairs[i].wSecond > 255)
-					continue;
-				std::string ks = kerningstring;
-				ks += (char) pairs[i].wFirst;
-				ks += (char) pairs[i].wSecond;
-				kernings.insert(std::pair<std::string, int>(ks, pairs[i].iKernAmount));
-			}
-
-			delete [] pairs;
+			if (pairs[i].wFirst > 255 || pairs[i].wSecond > 255)
+				continue;
+			kernings[pairs[i].wFirst | (pairs[i].wSecond << 8)] = pairs[i].iKernAmount;
 		}
 
-		calculated.insert(kerningstring);
+		delete [] pairs;
 	}
-
+	logf("1");
 	int totalwidth = 0, totalheight = 0;
 
 	for (i = 0; i < cchString; i++)
 	{
-		std::string ks;
-		if(lc)
-		{
-			ks = kerningstring;
-			ks += lc;
-			ks += lpString[i];
-		}
 		int size = GetGlyphOutline(hdc, lpString[i], GGO_BITMAP, &gms[i], 0, 0, &m2);
 		buffers[i] = new unsigned char[size];
 		GetGlyphOutline(hdc, lpString[i], GGO_BITMAP, &gms[i], size, buffers[i], &m2);
-		if (lc && kernings.find(ks) != kernings.end())
-		{
-			kerns[i] = kernings[ks];
-		}
-		else
-		{
-			kerns[i] = 0;
-		}
+		kerns[i] = kernings[lc | (lpString[i] << 8)];
 		lc = lpString[i];
 	}
-
+	
+	logf("2");
 	SIZE s;
 	GetTextExtentPoint32(hdc, lpString, cchString, &s);
 	totalwidth = s.cx;
@@ -144,12 +116,21 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 					break;
 				unsigned char pixel= ((buffers[i][(k * pitch) + (j / 8)] >> ((7 - (j + 8)) & 7)) & 1) * 0xFF;
 				if (!pixel) continue;
-				int gdi_offset = (open_dcs[hdc]->getWidth() * (k + nYStart - gms[i].gmptGlyphOrigin.y + height) + (j + nXStart)) * 4;
-				unsigned char *dest = open_dcs[hdc]->getGdiBuffer();
-				dest[gdi_offset] = (unsigned char) (pixel * ((c & 0x000000FF) / 255.f));
-				dest[gdi_offset + 1] = (unsigned char) (pixel * (((c & 0x0000FF00) >> 8) / 255.f));
-				dest[gdi_offset + 2] = (unsigned char) (pixel * (((c & 0x00FF0000) >> 16) / 255.f));
-				dest[gdi_offset + 3] = pixel;
+				int bpp = open_dcs[hdc]->getPitch() / open_dcs[hdc]->getWidth();
+				int gdi_offset = (open_dcs[hdc]->getWidth() * (k + nYStart - gms[i].gmptGlyphOrigin.y + height) + (j + nXStart)) * bpp;
+				unsigned char *dest = open_dcs[hdc]->getSurfaceData();
+				switch (bpp)
+				{
+				case 4:
+					dest[gdi_offset] = (unsigned char) (pixel * ((c & 0x000000FF) / 255.f));
+					dest[gdi_offset + 1] = (unsigned char) (pixel * (((c & 0x0000FF00) >> 8) / 255.f));
+					dest[gdi_offset + 2] = (unsigned char) (pixel * (((c & 0x00FF0000) >> 16) / 255.f));
+					dest[gdi_offset + 3] = pixel;
+					break;
+				case 1:
+					dest[gdi_offset] = color2palette(c);
+					break;
+				}
 			}
 		}
 
@@ -159,9 +140,57 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 	delete [] buffers;
 	delete [] gms;
 	delete [] kerns;
+	logf("done");
+	return;
+
+	// we can't use GetGlyphOutline for bitmap fonts, so we have this hackish workaround. :(
+fallback:
+	
+	if (lprc != NULL)
+	{
+		nXStart += lprc->left;
+		nYStart += lprc->top;
+	}
+
+	for (int i = 0; i < cchString; i++)
+	{
+		char ch = lpString[i];
+		nXStart += fixed_kernings[lc | (ch << 8)];
+		ch -= 0x20;
+
+		for (unsigned int j = 0; j < fixed_width[ch]; j++)
+		{
+			if ((int) j + nXStart < 0)
+				continue;
+			if ((int) j + nXStart > open_dcs[hdc]->getWidth())
+				break;
+			for (unsigned int k = 0; k < fixed_height[ch]; k++)
+			{
+				if ((int) k + nYStart < 0)
+					continue;
+				if ((int) k + nYStart > open_dcs[hdc]->getHeight())
+					break;
+				unsigned int pixel= fixed_data[ch][k * fixed_width[ch] + j] * c;
+				if (!pixel) continue;
+				int bpp = open_dcs[hdc]->getPitch() / open_dcs[hdc]->getWidth();
+				int gdi_offset = (open_dcs[hdc]->getWidth() * (k + nYStart) + (j + nXStart)) * bpp;
+				unsigned char *dest = open_dcs[hdc]->getSurfaceData();
+				switch (bpp)
+				{
+				case 4:
+					*(unsigned int *)(dest[gdi_offset]) = pixel;
+					break;
+				case 1:
+					dest[gdi_offset] = color2palette(c);
+					break;
+				}
+			}
+		}
+		nXStart += fixed_aw[ch];
+	}
 }
 
-void gdi_clear(const RECT *lpRect)
+/*void gdi_clear(const RECT *lpRect)
 {
 	if (tex_w == 0 || tex_h == 0)
 		return;
@@ -197,4 +226,4 @@ void gdi_run_invalidations()
 void gdi_clear_invalidations()
 {
 	invalidateRectsCount = 0;
-}
+}*/

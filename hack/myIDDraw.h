@@ -1,7 +1,6 @@
 #pragma once
 
 #include <hash_map>
-#include <unordered_set>
 
 class myIDDrawSurface_Generic;
 class myIDDrawPalette;
@@ -10,7 +9,7 @@ class myIDDrawClipper;
 unsigned char color2palette(unsigned int c);
 
 extern std::hash_map<HDC, myIDDrawSurface_Generic*> open_dcs;
-extern std::unordered_set<myIDDrawSurface_Generic*> full_surfaces;
+//extern std::unordered_set<myIDDrawSurface_Generic*> full_surfaces;
 extern std::hash_map<unsigned int, unsigned char> color_map;
 
 class myIDDraw1 : public IDirectDraw

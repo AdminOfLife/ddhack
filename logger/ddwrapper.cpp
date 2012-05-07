@@ -29,6 +29,7 @@
  */
 #include "stdafx.h"
 #include <varargs.h>
+#include <detours/detours.h>
 
 //#define LOG_DLL_ATTACH
 
@@ -37,6 +38,66 @@
 HINSTANCE           gl_hOriginalDll;
 HINSTANCE           gl_hThisInstance;
 #pragma data_seg ()
+
+HWND (WINAPI *CreateWindowEx_fn)(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam) = CreateWindowEx;
+BOOL (WINAPI *TextOutA_fn)(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString) = TextOutA;
+//BOOL (WINAPI *InvalidateRect_fn)(HWND hWnd, const RECT *lpRect, BOOL bErase) = InvalidateRect;
+//BOOL (WINAPI *ValidateRect_fn)(HWND hWnd, const RECT *lpRect) = ValidateRect;
+int (WINAPI *DrawTextExA_fn)(HDC hdc, LPTSTR lpchText, int cchText, LPRECT lprc, UINT dwDTFormat, LPDRAWTEXTPARAMS lpDTParams) = DrawTextExA;
+
+HWND WINAPI myCreateWindowEx(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam)
+{
+	logf(0, "CreateWindowEx");
+	logf(0, " nWidth: %d", nWidth);
+	logf(0, " nHeight: %d", nHeight);
+	logf(0, " dwExStyle: %08x", dwExStyle);
+	logf(0, " dwStyle: %08x", dwStyle);
+	HWND r = CreateWindowEx_fn(dwExStyle, lpClassName, lpWindowName, dwStyle, x, y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
+	logf(0, " return: %08x", r);
+	return r;
+}
+
+BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString)
+{
+	logf(0, "TextOutA");
+	char word[1024];
+	logf(0, " nXStart: %d", nXStart);
+	logf(0, " nYStart: %d", nYStart);
+	memcpy(word, lpString, cchString);
+	word[cchString] = 0;
+	logf(0, " lpString: %s", word);
+	logf(0, " cchString: %d", cchString);
+
+	BOOL r = TextOutA_fn(hdc, nXStart, nYStart, lpString, cchString);
+	logf(0, " return: %d", r);
+	return r;
+}
+
+int myDrawTextExA(HDC hdc, LPTSTR lpchText, int cchText, LPRECT lprc, UINT dwDTFormat, LPDRAWTEXTPARAMS lpDTParams)
+{
+	int len = cchText != -1 ? cchText : strlen(lpchText);
+	char word[1024];
+	logf(0, "DrawTextExA");
+	logf(0, " hdc: %08x", hdc);
+	logf(0, " cchText: %d", cchText);
+	logf(0, " lprect: [%d,%d,%d,%d]", lprc->top, lprc->right, lprc->bottom, lprc->left);
+	logf(0, " dwDTFormat: %08x", dwDTFormat);
+	logf(0, " lpDTParams: %08x", lpDTParams);
+	if (lpDTParams)
+	{
+		logf(0, "  iTabLength: %d", lpDTParams->iTabLength);
+		logf(0, "  iLeftMargin: %d", lpDTParams->iLeftMargin);
+		logf(0, "  iRightMargin: %d", lpDTParams->iRightMargin);
+	}
+	memcpy(word, lpchText, len);
+	word[len] = 0;
+	logf(0, " lpchText: %s", word);
+	int r = DrawTextExA_fn(hdc, lpchText, cchText, lprc, dwDTFormat, lpDTParams);
+	logf(0, " return: %d", r);
+	if (lpDTParams)
+		logf(0, "  uiLengthDrawn: %d", lpDTParams->uiLengthDrawn);
+	return r;
+}
 
 void logf(void * thisptr, char *msg, ...)
 {	
@@ -499,6 +560,30 @@ void InitInstance(HANDLE hModule)
 	
 	// Storing Instance handle into global var
 	gl_hThisInstance = (HINSTANCE)  hModule;
+
+	DisableThreadLibraryCalls((HMODULE) hModule);
+	DetourTransactionBegin();
+	DetourUpdateThread(GetCurrentThread());
+	DetourAttach(&(PVOID&)TextOutA_fn, myTextOutA);
+	if(DetourTransactionCommit() != NO_ERROR)
+	{
+		logf(0, "Could not hook TextOutA");
+		::ExitProcess(0);
+	}
+	DetourTransactionBegin();
+	DetourAttach(&(PVOID&)CreateWindowEx_fn, myCreateWindowEx);
+	if(DetourTransactionCommit() != NO_ERROR)
+	{
+		logf(0, "Could not hook CreateWindowEx");
+		::ExitProcess(0);
+	}
+	DetourTransactionBegin();
+	DetourAttach(&(PVOID&)DrawTextExA_fn, myDrawTextExA);
+	if(DetourTransactionCommit() != NO_ERROR)
+	{
+		logf(0, "Could not hook DrawTextExA");
+		::ExitProcess(0);
+	}
 }
 
 

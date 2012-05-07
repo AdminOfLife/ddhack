@@ -1,9 +1,9 @@
 #include "StdAfx.h"
 #include <varargs.h>
-#include <unordered_set>
+#include <hash_map>
 
 std::hash_map<HDC, myIDDrawSurface_Generic*> open_dcs;
-std::unordered_set<myIDDrawSurface_Generic*> full_surfaces;
+//std::unordered_set<myIDDrawSurface_Generic*> full_surfaces;
 std::hash_map<unsigned int, unsigned char> color_map;
 
 unsigned char color2palette(unsigned int c)
@@ -67,8 +67,8 @@ myIDDrawSurface1::myIDDrawSurface1(LPDDSURFACEDESC a)
 		}
 	}
 
-	if (mWidth == gScreenWidth && mHeight == gScreenHeight)
-		full_surfaces.emplace(this);
+	//if (mWidth == gScreenWidth && mHeight == gScreenHeight)
+	//	full_surfaces.emplace(this);
 	
 	mPitch = mWidth * gScreenBits / 8;
 
@@ -114,10 +114,10 @@ myIDDrawSurface1::~myIDDrawSurface1(void)
 	delete[] mRealSurfaceData;
 	delete[] mRealGdiBuffer;
 
-	if (full_surfaces.find(this) != full_surfaces.end())
+	/*if (full_surfaces.find(this) != full_surfaces.end())
 	{
 		full_surfaces.erase(this);
-	}
+	}*/
 }
 
 
@@ -228,33 +228,15 @@ HRESULT  __stdcall myIDDrawSurface1::Blt(LPRECT a,LPDIRECTDRAWSURFACE b, LPRECT 
 			{
 				for (i = 0; i < a->bottom - a->top; i++)
 					for (j = 0; j < a->right - a->left; j++)
-					{
 						if (!usingColorKey || src->mSurfaceData[(i + c->top) * src->mPitch + j + c->left] != colorKey)
-						{
 							mSurfaceData[(i + a->top) * mPitch + j + a->left] = src->mSurfaceData[(i + c->top) * src->mPitch + j + c->left];
-						}
-
-						if (src->isTextBuffer())
-						{
-							//mGdiBuffer[(i + a->top) * mWidth + j + a->left] = src->mGdiBuffer[(i + c->top) * src->mWidth + j + c->left];
-						}
-					}
 			}
 			else
 			{
 				for (i = 0; i < mHeight; i++)
 					for (j = 0; j < mWidth; j++)
-					{
 						if (!usingColorKey || src->mSurfaceData[i * src->mPitch + j] != colorKey)
-						{
 							mSurfaceData[i * mPitch + j] = src->mSurfaceData[i * src->mPitch + j];
-						}
-						
-						if (src->isTextBuffer())
-						{
-							//mGdiBuffer[i * mWidth + j] = src->mGdiBuffer[i * src->mWidth + j];
-						}
-					}
 			}
 		}
 	}

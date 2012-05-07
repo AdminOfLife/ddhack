@@ -70,19 +70,18 @@ int xPos = 0;
 int yPos = 0;
 int gSoftCursor = 0;
 int gRunBackground = 0;
-unsigned int temp[2048*2048];
 
 #pragma data_seg ()
 
 HWND (WINAPI *CreateWindowEx_fn)(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWindowName, DWORD dwStyle, int x, int y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam) = CreateWindowEx;
 BOOL (WINAPI *TextOutA_fn)(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString) = TextOutA;
-BOOL (WINAPI *InvalidateRect_fn)(HWND hWnd, const RECT *lpRect, BOOL bErase) = InvalidateRect;
-BOOL (WINAPI *ValidateRect_fn)(HWND hWnd, const RECT *lpRect) = ValidateRect;
 int (WINAPI *DrawTextExA_fn)(HDC hdc, LPTSTR lpchText, int cchText, LPRECT lprc, UINT dwDTFormat, LPDRAWTEXTPARAMS lpDTParams) = DrawTextExA;
+
+void fixed_kernings_setup();
 
 void logf(char *msg, ...)
 {
-#if 1
+#if 0
 	va_list argp;
 	FILE * f = fopen("ddhack.log","a");
 	static int t = -1;
@@ -152,7 +151,7 @@ BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int 
 	return TextOutA_fn(hdc, nXStart, nYStart, lpString, cchString);
 }
 
-BOOL WINAPI myInvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase)
+/*BOOL WINAPI myInvalidateRect(HWND hWnd, const RECT *lpRect, BOOL bErase)
 {
 	logf("InvalidateRect");
 	if (lpRect)
@@ -184,7 +183,7 @@ BOOL WINAPI myValidateRect(HWND hWnd, const RECT *lpRect)
 		gdi_clear_invalidations();
 
 	return ValidateRect_fn(hWnd, lpRect);
-}
+}*/
 
 int myDrawTextExA(HDC hdc, LPTSTR lpchText, int cchText, LPRECT lprc, UINT dwDTFormat, LPDRAWTEXTPARAMS lpDTParams)
 {
@@ -778,7 +777,7 @@ LRESULT CALLBACK newwinproc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 	case WM_PAINT:
-		gdi_run_invalidations();
+		//gdi_run_invalidations();
 		break;
 	}
 
@@ -929,6 +928,7 @@ BOOL APIENTRY DllMain( HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
 void InitInstance(HANDLE hModule) 
 {
 	logf("InitInstance.");
+	fixed_kernings_setup();
 	// Our extremely simple config file handling..
 	gSmooth=INI_READ_INT("Rendering","bilinear_filter",0);
 	gSmooth=gHalfAndHalf=INI_READ_INT("Rendering","halfnhalf",0);
@@ -956,14 +956,7 @@ void InitInstance(HANDLE hModule)
 	gHinst = (HINSTANCE)  hModule;
 
 	DisableThreadLibraryCalls((HMODULE) hModule);
-	DetourTransactionBegin();
 	DetourUpdateThread(GetCurrentThread());
-	DetourAttach(&(PVOID&)TextOutA_fn, myTextOutA);
-	if(DetourTransactionCommit() != NO_ERROR)
-	{
-		logf("Could not hook TextOutA");
-		::ExitProcess(0);
-	}
 	DetourTransactionBegin();
 	DetourAttach(&(PVOID&)CreateWindowEx_fn, myCreateWindowEx);
 	if(DetourTransactionCommit() != NO_ERROR)
@@ -971,20 +964,13 @@ void InitInstance(HANDLE hModule)
 		logf("Could not hook CreateWindowEx");
 		::ExitProcess(0);
 	}
-	/*DetourTransactionBegin();
-	DetourAttach(&(PVOID&)InvalidateRect_fn, myInvalidateRect);
+	DetourTransactionBegin();
+	DetourAttach(&(PVOID&)TextOutA_fn, myTextOutA);
 	if(DetourTransactionCommit() != NO_ERROR)
 	{
-		logf("Could not hook InvalidateRect");
+		logf("Could not hook TextOutA");
 		::ExitProcess(0);
 	}
-	DetourTransactionBegin();
-	DetourAttach(&(PVOID&)ValidateRect_fn, myValidateRect);
-	if(DetourTransactionCommit() != NO_ERROR)
-	{
-		logf("Could not hook ValidateRect");
-		::ExitProcess(0);
-	}*/
 	DetourTransactionBegin();
 	DetourAttach(&(PVOID&)DrawTextExA_fn, myDrawTextExA);
 	if(DetourTransactionCommit() != NO_ERROR)
