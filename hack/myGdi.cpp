@@ -131,8 +131,17 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 		DWORD pitch = ((gms[i].gmBlackBoxX / 8) + 3) & ~3;
 		if (!pitch) pitch = 4;
 		for (DWORD j = 0; j < gms[i].gmBlackBoxX; j++)
+		{
+			if ((int) j + nXStart < 0)
+				continue;
+			if ((int) j + nXStart > open_dcs[hdc]->getWidth())
+				break;
 			for (DWORD k = 0; k < gms[i].gmBlackBoxY; k++)
 			{
+				if ((int) k + nYStart < 0)
+					continue;
+				if ((int) k + nYStart > open_dcs[hdc]->getHeight())
+					break;
 				unsigned char pixel= ((buffers[i][(k * pitch) + (j / 8)] >> ((7 - (j + 8)) & 7)) & 1) * 0xFF;
 				if (!pixel) continue;
 				int gdi_offset = (open_dcs[hdc]->getWidth() * (k + nYStart - gms[i].gmptGlyphOrigin.y + height) + (j + nXStart)) * 4;
@@ -142,6 +151,7 @@ void gdi_write_string(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int c
 				dest[gdi_offset + 2] = (unsigned char) (pixel * (((c & 0x00FF0000) >> 16) / 255.f));
 				dest[gdi_offset + 3] = pixel;
 			}
+		}
 
 		delete [] buffers[i];
 		nXStart += gms[i].gmCellIncX;

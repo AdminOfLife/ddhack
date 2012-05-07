@@ -81,6 +81,7 @@ HRESULT  __stdcall myIDDrawPalette::SetEntries(DWORD aFlags,DWORD aStartEntry,DW
 	memcpy(mPal + aStartEntry, aPalEntries, aCount * sizeof(PALETTEENTRY));
 	for (int i = 0; i < 256; i++)
 		mPal[i].peFlags = 0;
+	color_map.empty();
 	updatescreen();
 	return NOERROR;
 }

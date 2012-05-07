@@ -4,6 +4,45 @@
 
 std::hash_map<HDC, myIDDrawSurface_Generic*> open_dcs;
 std::unordered_set<myIDDrawSurface_Generic*> full_surfaces;
+std::hash_map<unsigned int, unsigned char> color_map;
+
+unsigned char color2palette(unsigned int c)
+{
+	if (!gPrimarySurface || !gPrimarySurface->getCurrentPalette())
+	{
+		return 0;
+	}
+
+	if (color_map.find(c) != color_map.end())
+		return color_map[c];
+
+	// calculate closest palette entry for the color
+	
+	const unsigned int *palette = (unsigned int *) gPrimarySurface->getCurrentPalette()->mPal;
+	double d = 999999999999.0;
+	unsigned char index = 0;
+
+	for (unsigned int i = 0; i < 256; i++)
+	{
+		double r = (((c & 0x00FF0000) >> 16) - ((palette[i] & 0x00FF0000) >> 16));
+		double g = (((c & 0x0000FF00) >> 8) - ((palette[i] & 0x0000FF00) >> 8));
+		double b = ((c & 0x000000FF) - (palette[i] & 0x000000FF));
+
+		double dist = r * r + g * g + b * b;
+
+		if (dist < d)
+		{
+			d = dist;
+			index = (unsigned char) i;
+		}
+		// exact match!
+		if (dist == 0)
+			break;
+	}
+	
+	color_map[c] = index;
+	return index;
+}
 
 myIDDrawSurface1::myIDDrawSurface1(LPDDSURFACEDESC a)
 {
@@ -197,7 +236,7 @@ HRESULT  __stdcall myIDDrawSurface1::Blt(LPRECT a,LPDIRECTDRAWSURFACE b, LPRECT 
 
 						if (src->isTextBuffer())
 						{
-							mGdiBuffer[(i + a->top) * mWidth + j + a->left] = src->mGdiBuffer[(i + c->top) * src->mWidth + j + c->left];
+							//mGdiBuffer[(i + a->top) * mWidth + j + a->left] = src->mGdiBuffer[(i + c->top) * src->mWidth + j + c->left];
 						}
 					}
 			}
@@ -213,7 +252,7 @@ HRESULT  __stdcall myIDDrawSurface1::Blt(LPRECT a,LPDIRECTDRAWSURFACE b, LPRECT 
 						
 						if (src->isTextBuffer())
 						{
-							mGdiBuffer[i * mWidth + j] = src->mGdiBuffer[i * src->mWidth + j];
+							//mGdiBuffer[i * mWidth + j] = src->mGdiBuffer[i * src->mWidth + j];
 						}
 					}
 			}
@@ -539,6 +578,15 @@ HRESULT  __stdcall myIDDrawSurface1::ReleaseDC(HDC a)
 	logf("myIDDrawSurface1::ReleaseDC");
 	DeleteDC(a);
 	open_dcs.erase(a);
+
+	const int bpp = mPitch / mWidth;
+	// copy gdi drawing to actual surface data
+	for (int i = 0; i < mWidth * mHeight; i++)
+	{
+		if (mGdiBuffer[i])
+			mSurfaceData[i * bpp] = color2palette(mGdiBuffer[i]);
+	}
+	clearGdi();
 	return DD_OK;
 }
 

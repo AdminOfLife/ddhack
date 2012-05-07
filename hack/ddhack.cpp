@@ -82,7 +82,7 @@ int (WINAPI *DrawTextExA_fn)(HDC hdc, LPTSTR lpchText, int cchText, LPRECT lprc,
 
 void logf(char *msg, ...)
 {
-#if 0
+#if 1
 	va_list argp;
 	FILE * f = fopen("ddhack.log","a");
 	static int t = -1;
@@ -140,6 +140,12 @@ HWND WINAPI myCreateWindowEx(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWin
 BOOL WINAPI myTextOutA(HDC hdc, int nXStart, int nYStart, LPCTSTR lpString, int cchString)
 {
 	logf("TextOutA");
+	char word[1024];
+	logf(" nXStart: %d", nXStart);
+	logf(" nYStart: %d", nYStart);
+	memcpy(word, lpString, cchString);
+	word[cchString] = 0;
+	logf(" lpString: %s", word);
 	
 	gdi_write_string(hdc, nXStart, nYStart, lpString, cchString, NULL, 0);
 
@@ -965,7 +971,7 @@ void InitInstance(HANDLE hModule)
 		logf("Could not hook CreateWindowEx");
 		::ExitProcess(0);
 	}
-	DetourTransactionBegin();
+	/*DetourTransactionBegin();
 	DetourAttach(&(PVOID&)InvalidateRect_fn, myInvalidateRect);
 	if(DetourTransactionCommit() != NO_ERROR)
 	{
@@ -978,12 +984,12 @@ void InitInstance(HANDLE hModule)
 	{
 		logf("Could not hook ValidateRect");
 		::ExitProcess(0);
-	}
+	}*/
 	DetourTransactionBegin();
 	DetourAttach(&(PVOID&)DrawTextExA_fn, myDrawTextExA);
 	if(DetourTransactionCommit() != NO_ERROR)
 	{
-		logf("Could not hook ValidateRect");
+		logf("Could not hook DrawTextExA");
 		::ExitProcess(0);
 	}
 	// We'll get the hWnd from setcooperativemode later.

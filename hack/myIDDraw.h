@@ -7,8 +7,11 @@ class myIDDrawSurface_Generic;
 class myIDDrawPalette;
 class myIDDrawClipper;
 
+unsigned char color2palette(unsigned int c);
+
 extern std::hash_map<HDC, myIDDrawSurface_Generic*> open_dcs;
 extern std::unordered_set<myIDDrawSurface_Generic*> full_surfaces;
+extern std::hash_map<unsigned int, unsigned char> color_map;
 
 class myIDDraw1 : public IDirectDraw
 {
@@ -154,6 +157,7 @@ class myIDDrawSurface_Generic
 	virtual unsigned char * getSurfaceData() const = 0;
 	virtual unsigned char * getGdiBuffer() const = 0;
 	virtual int getWidth() const = 0;
+	virtual int getHeight() const = 0;
 	virtual int getPitch() const = 0;
 	virtual bool isTextBuffer() const = 0;
 	virtual void setTextBuffer() = 0;
@@ -210,6 +214,7 @@ public:
 	virtual unsigned char * getSurfaceData() const { return mSurfaceData; }
 	virtual unsigned char * getGdiBuffer() const { return (unsigned char *) mGdiBuffer; }
 	virtual int getWidth() const { return mWidth; }
+	virtual int getHeight() const { return mHeight; }
 	virtual int getPitch() const { return mPitch; }
 	virtual bool isTextBuffer() const { return mIsTextBuffer; }
 	virtual void setTextBuffer() { mIsTextBuffer = true; }
@@ -302,6 +307,7 @@ public:
 	virtual unsigned char * getSurfaceData() const { return mSurfaceData; }
 	virtual unsigned char * getGdiBuffer() const { return (unsigned char *) mGdiBuffer; }
 	virtual int getWidth() const { return mWidth; }
+	virtual int getHeight() const { return mHeight; }
 	virtual int getPitch() const { return mPitch; }
 	virtual bool isTextBuffer() const { return mIsTextBuffer; }
 	virtual void setTextBuffer() { mIsTextBuffer = true; }
